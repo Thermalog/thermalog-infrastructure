@@ -1,0 +1,71 @@
+version: "3.8"
+
+services:
+  thermalog-backend:
+    build:
+      context: ./Thermalog-Backend
+      dockerfile: Dockerfile
+    container_name: thermalog-backend
+    restart: always
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./Thermalog-Backend/.env
+    # depends_on:
+    #   - timescaledb
+    networks:
+      - app-network
+    command: >
+      /bin/bash -c "
+      npx prisma generate &&
+      npx prisma migrate deploy &&
+      pm2-runtime start dist/main.js --name 'Thermalog-Backend' --instances 1"
+
+  thermalog-frontend:
+    build:
+      context: ./Thermalog-frontend
+      dockerfile: Dockerfile
+    container_name: thermalog-frontend
+    env_file:
+      - ./Thermalog-frontend/.env
+    restart: always
+    depends_on:
+      - thermalog-backend
+    networks:
+      - app-network
+
+  nginx:
+    build:
+      context: ./Thermalog-frontend
+      dockerfile: Dockerfile
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - thermalog-frontend
+    networks:
+      - app-network
+
+  # timescaledb:
+  #   image: timescale/timescaledb:latest-pg14
+  #   container_name: timescaledb
+  #   environment:
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: password
+  #     POSTGRES_DB: mydatabase
+  #   restart: always
+  #   ports:
+  #     - "5434:5432"
+  #   volumes:
+  #     - timescale-data:/var/lib/postgresql/data
+  #   networks:
+  #     - app-network
+
+# volumes:
+#   timescale-data:
+
+networks:
+  app-network:
+    driver: bridge

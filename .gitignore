@@ -1,0 +1,53 @@
+# Environment files (contain secrets)
+.env
+.env.local
+.env.production
+*.env
+
+# SSL certificates and keys
+*.pem
+*.key
+*.crt
+
+# Backup files
+backups/
+*.tar.gz
+*.zip
+
+# Logs
+*.log
+logs/
+
+# Docker volumes
+volumes/
+
+# Temporary files
+tmp/
+temp/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node.js (if running scripts locally)
+node_modules/
+npm-debug.log*
+
+# Local testing files
+test-*.sh
+debug-*
+
+# Sensitive configuration
+secrets/
+private/
