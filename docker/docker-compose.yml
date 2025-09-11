@@ -35,16 +35,19 @@ services:
       - app-network
 
   nginx:
-    build:
-      context: ./Thermalog-frontend
-      dockerfile: Dockerfile
+    image: nginx:alpine
     container_name: nginx
     restart: always
     ports:
       - "80:80"
       - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/fullchain.pem:/etc/ssl/certs/fullchain.pem
+      - ./nginx/privkey.pem:/etc/ssl/certs/privkey.pem
     depends_on:
       - thermalog-frontend
+      - thermalog-backend
     networks:
       - app-network
 
