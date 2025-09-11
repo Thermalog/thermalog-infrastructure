@@ -1,0 +1,94 @@
+{
+  "healthCheck": {
+    "endpoints": {
+      "main": {
+        "url": "http://localhost:3001/api/health",
+        "method": "GET",
+        "timeout": 5000,
+        "expectedStatus": 200,
+        "description": "Main health check with database connectivity verification"
+      },
+      "liveness": {
+        "url": "http://localhost:3001/api/health/live",
+        "method": "GET", 
+        "timeout": 3000,
+        "expectedStatus": 200,
+        "description": "Simple liveness probe for container orchestrators"
+      },
+      "readiness": {
+        "url": "http://localhost:3001/api/health/ready",
+        "method": "GET",
+        "timeout": 5000,
+        "expectedStatus": 200,
+        "description": "Readiness probe with database and service checks"
+      }
+    },
+    "checks": {
+      "database": {
+        "enabled": true,
+        "query": "SELECT 1",
+        "timeout": 5000,
+        "description": "Database connectivity verification"
+      },
+      "memory": {
+        "enabled": true,
+        "thresholds": {
+          "warning": 80,
+          "critical": 95
+        },
+        "description": "Memory usage monitoring"
+      },
+      "uptime": {
+        "enabled": true,
+        "description": "Service uptime tracking"
+      }
+    },
+    "deployment": {
+      "maxWaitTime": 60,
+      "checkInterval": 2,
+      "maxRetries": 30,
+      "description": "Health check parameters for deployment validation"
+    },
+    "monitoring": {
+      "logLevel": "info",
+      "metricsEnabled": true,
+      "alerting": {
+        "slack": {
+          "enabled": false,
+          "webhookUrl": "",
+          "channels": ["#deployments", "#alerts"]
+        },
+        "email": {
+          "enabled": false,
+          "recipients": []
+        }
+      }
+    }
+  },
+  "services": {
+    "backend": {
+      "name": "thermalog-backend",
+      "healthEndpoint": "/api/health",
+      "port": 3001,
+      "dependencies": ["database"],
+      "startupTime": 30,
+      "shutdownGrace": 10
+    },
+    "frontend": {
+      "name": "thermalog-frontend", 
+      "healthEndpoint": "/",
+      "port": 80,
+      "dependencies": ["backend"],
+      "startupTime": 10,
+      "shutdownGrace": 5
+    },
+    "nginx": {
+      "name": "nginx",
+      "healthEndpoint": "/health",
+      "port": 80,
+      "dependencies": ["frontend", "backend"],
+      "startupTime": 5,
+      "shutdownGrace": 5
+    }
+  }
+}

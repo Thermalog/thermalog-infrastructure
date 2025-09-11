@@ -14,9 +14,18 @@ cd thermalog-infrastructure
 sudo ./scripts/setup-server.sh
 ```
 
-### Deploying Updates
+### Automated Deployment
 ```bash
-# Update and redeploy the application
+# Setup automated deployment (run once)
+./scripts/setup-auto-deploy.sh
+
+# Manual deployment (if needed)
+./scripts/auto-deploy.sh
+```
+
+### Traditional Deployment
+```bash
+# Update and redeploy manually
 ./scripts/deploy.sh
 ```
 
@@ -37,7 +46,10 @@ thermalog-infrastructure/
 │   └── default.conf                 # Main nginx config
 ├── scripts/                         # Automation scripts
 │   ├── setup-server.sh             # Complete server setup
-│   ├── deploy.sh                    # Deployment automation
+│   ├── auto-deploy.sh              # 🆕 Automated deployment with health checks
+│   ├── docker-cleanup.sh           # 🆕 Docker cleanup and maintenance
+│   ├── setup-auto-deploy.sh        # 🆕 Setup automation (cron jobs)
+│   ├── deploy.sh                    # Manual deployment (legacy)
 │   ├── backup.sh                    # Backup creation
 │   ├── install-ssl-hooks.sh         # SSL automation setup
 │   └── ssl-hooks/                   # Certificate renewal hooks
@@ -45,14 +57,43 @@ thermalog-infrastructure/
 │       ├── post/start-nginx.sh      # Post-renewal hook
 │       └── deploy/docker-nginx.sh   # Certificate deployment
 ├── configs/                         # Configuration templates
+│   ├── health-check.json           # 🆕 Health check configuration
+│   ├── docker-cleanup.json         # 🆕 Docker cleanup settings
 │   ├── .env.backend.template        # Backend environment template
 │   └── .env.frontend.template       # Frontend environment template
 ├── docs/                           # Documentation
-│   ├── deployment.md               # Deployment guide
+│   ├── AUTOMATED_DEPLOYMENT.md    # 🆕 Automated deployment guide
+│   ├── deployment.md               # Manual deployment guide
 │   ├── ssl-setup.md                # SSL configuration
 │   └── troubleshooting.md          # Common issues
 └── README.md                       # This file
 ```
+
+## 🤖 Automated Deployment Features
+
+### Health Check API
+- **Database connectivity verification** with response time monitoring
+- **Memory usage tracking** and system health
+- **Multiple endpoints**: `/health`, `/health/live`, `/health/ready`
+- **Automatic failure detection** with HTTP 503 responses
+
+### Continuous Deployment
+- **GitHub monitoring** every 5 minutes
+- **Safe deployment** with automatic rollback
+- **Health verification** before deployment completion
+- **Zero-downtime** deployment strategies
+
+### Docker Management
+- **Automatic cleanup** after deployments
+- **Daily maintenance** at 2 AM UTC
+- **Smart retention** (keeps current + 3 backups)
+- **Build cache management** and space optimization
+
+### Monitoring & Alerting
+- **Comprehensive logging** for all operations
+- **Real-time monitoring** with colored output
+- **Optional Slack integration** for notifications
+- **Backup verification** and rollback safety
 
 ## 🔧 Prerequisites
 

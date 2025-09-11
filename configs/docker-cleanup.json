@@ -1,0 +1,86 @@
+{
+  "dockerCleanup": {
+    "schedule": {
+      "automatic": "0 2 * * *",
+      "description": "Run daily at 2 AM UTC"
+    },
+    "retention": {
+      "backupsPerService": 3,
+      "buildCacheMaxAge": "24h",
+      "description": "Keep last 3 backups per service, cache older than 24h is cleaned"
+    },
+    "protection": {
+      "preserveImages": [
+        "root-thermalog-backend:latest",
+        "root-thermalog-frontend:latest", 
+        "nginx:alpine",
+        "node:20-alpine"
+      ],
+      "preservePatterns": [
+        "root-thermalog-*:backup-*",
+        "root-thermalog-*:auto-backup-*",
+        "root-thermalog-*:last-stable"
+      ],
+      "description": "Images and patterns to always preserve during cleanup"
+    },
+    "cleanup": {
+      "stoppedContainers": true,
+      "danglingImages": true,
+      "unusedVolumes": true,
+      "unusedNetworks": true,
+      "buildCache": true,
+      "description": "Components to clean during maintenance"
+    },
+    "logging": {
+      "enabled": true,
+      "logFile": "/root/docker-cleanup.log",
+      "cronLogFile": "/root/docker-cleanup-cron.log",
+      "level": "info"
+    },
+    "notifications": {
+      "onCleanup": false,
+      "onError": true,
+      "spaceThreshold": "80%",
+      "description": "Notify on errors or when disk usage exceeds threshold"
+    },
+    "safety": {
+      "dryRun": false,
+      "confirmBeforeDelete": false,
+      "skipRunningContainers": true,
+      "preserveNamedVolumes": true,
+      "description": "Safety measures for cleanup operations"
+    }
+  },
+  "services": [
+    {
+      "name": "backend",
+      "imageName": "root-thermalog-backend",
+      "maxBackups": 3,
+      "criticalService": true
+    },
+    {
+      "name": "frontend", 
+      "imageName": "root-thermalog-frontend",
+      "maxBackups": 3,
+      "criticalService": true
+    },
+    {
+      "name": "nginx",
+      "imageName": "root-nginx",
+      "maxBackups": 2,
+      "criticalService": true
+    }
+  ],
+  "monitoring": {
+    "diskUsage": {
+      "warning": "70%",
+      "critical": "85%",
+      "checkInterval": "1h"
+    },
+    "imageCount": {
+      "warning": 20,
+      "critical": 30,
+      "description": "Alert when total image count exceeds thresholds"
+    }
+  }
+}
