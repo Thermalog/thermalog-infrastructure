@@ -1,0 +1,21 @@
+[Unit]
+Description=Thermalog Startup Verification and Recovery
+After=thermalog.service
+Wants=thermalog.service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/root/startup-thermalog.sh
+TimeoutStartSec=600
+User=root
+Group=root
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

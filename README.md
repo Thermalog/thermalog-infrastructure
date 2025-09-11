@@ -49,6 +49,8 @@ thermalog-infrastructure/
 │   ├── auto-deploy.sh              # 🆕 Automated deployment with health checks
 │   ├── docker-cleanup.sh           # 🆕 Docker cleanup and maintenance
 │   ├── setup-auto-deploy.sh        # 🆕 Setup automation (cron jobs)
+│   ├── ssl-renew.sh                # 🆕 SSL certificate auto-renewal
+│   ├── startup-thermalog.sh        # 🆕 Server restart verification
 │   ├── deploy.sh                    # Manual deployment (legacy)
 │   ├── backup.sh                    # Backup creation
 │   ├── install-ssl-hooks.sh         # SSL automation setup
@@ -59,10 +61,15 @@ thermalog-infrastructure/
 ├── configs/                         # Configuration templates
 │   ├── health-check.json           # 🆕 Health check configuration
 │   ├── docker-cleanup.json         # 🆕 Docker cleanup settings
+│   ├── systemd/                    # 🆕 Systemd service files
+│   │   ├── thermalog.service       # 🆕 Main application service
+│   │   └── thermalog-startup.service # 🆕 Startup verification service
 │   ├── .env.backend.template        # Backend environment template
 │   └── .env.frontend.template       # Frontend environment template
 ├── docs/                           # Documentation
 │   ├── AUTOMATED_DEPLOYMENT.md    # 🆕 Automated deployment guide
+│   ├── SSL_RENEWAL.md              # 🆕 SSL certificate auto-renewal
+│   ├── SERVER_RESTART_RESILIENCE.md # 🆕 Server restart recovery
 │   ├── deployment.md               # Manual deployment guide
 │   ├── ssl-setup.md                # SSL configuration
 │   └── troubleshooting.md          # Common issues
@@ -94,6 +101,36 @@ thermalog-infrastructure/
 - **Real-time monitoring** with colored output
 - **Optional Slack integration** for notifications
 - **Backup verification** and rollback safety
+
+### Server Restart Resilience
+- **Multi-layer recovery** system with automatic restart
+- **Systemd service integration** for boot-time startup
+- **Startup verification** with health checks and recovery
+- **Complete automation** resumes after restart
+
+### SSL Certificate Management
+- **Automatic renewal** twice daily with Let's Encrypt
+- **Docker-aware process** safely stops/starts nginx
+- **Smart scheduling** with random delays to prevent rate limiting
+- **Comprehensive logging** and error handling
+
+## 📅 Complete Automation Schedule
+
+### Cron Jobs
+```bash
+*/5 * * * *    # Auto-deployment monitoring every 5 minutes
+0 2 * * *      # Docker cleanup daily at 2 AM
+15 3,15 * * *  # SSL renewal twice daily (3:15 AM/PM + random delay)
+@reboot        # Startup verification after server restart
+```
+
+### Systemd Services
+```bash
+thermalog.service         # Main application stack auto-start
+thermalog-startup.service # Startup verification and recovery
+docker.service            # Docker daemon (enabled)
+cron.service              # Cron scheduler (enabled)
+```
 
 ## 🔧 Prerequisites
 
