@@ -4,15 +4,20 @@ Complete infrastructure configuration for the Thermalog application, enabling ea
 
 ## 🚀 Quick Start
 
-### New Server Setup
+### 🆕 One-Click Deployment (Recommended)
 ```bash
-# 1. Clone this repository
-git clone https://github.com/yourusername/thermalog-infrastructure.git
+# 1. Install prerequisites (git and curl only)
+sudo apt update && sudo apt install -y git curl
+
+# 2. Clone ONLY this infrastructure repository
+git clone https://github.com/Thermalog/thermalog-infrastructure.git
 cd thermalog-infrastructure
 
-# 2. Run the automated setup script
-sudo ./scripts/setup-server.sh
+# 3. Run the master deployment script (automatically clones other repos)
+sudo ./deploy-everything.sh
 ```
+
+**⚡ The script automatically clones Thermalog-Backend and Thermalog-frontend repositories for you!**
 
 ### Automated Deployment
 ```bash

@@ -11,13 +11,18 @@ The `deploy-everything.sh` script is a **one-click solution** that can:
 
 ### For New Servers
 ```bash
-# 1. Clone the infrastructure repository
+# 1. Install minimal prerequisites  
+sudo apt update && sudo apt install -y git curl
+
+# 2. Clone ONLY the infrastructure repository
 git clone https://github.com/Thermalog/thermalog-infrastructure.git
 cd thermalog-infrastructure
 
-# 2. Run the master deployment script
+# 3. Run the master deployment script (clones other repos automatically)
 sudo ./deploy-everything.sh
 ```
+
+**Note**: You only need to clone the `thermalog-infrastructure` repository manually. The script automatically clones `Thermalog-Backend` and `Thermalog-frontend` for you!
 
 ### For Existing Servers (Missing Components)
 ```bash
@@ -65,19 +70,21 @@ Configures cron jobs:
 - **After boot**: Startup verification and recovery
 
 ### 📁 Repository Management
-- Clones/updates Thermalog-Backend and Thermalog-frontend repositories
+- **Automatically clones** Thermalog-Backend and Thermalog-frontend to `/root/`
+- Updates existing repositories if they already exist
 - Creates basic docker-compose.yml if missing
 - Verifies all required files are present
+
+**Important**: You don't need to manually clone the application repositories - the script does this automatically!
 
 ## Usage Examples
 
 ### Example 1: Brand New Ubuntu Server
 ```bash
-# Fresh Ubuntu 20.04/22.04 server
-sudo apt update
-sudo apt install -y git
+# Fresh Ubuntu 20.04/22.04 server - install prerequisites
+sudo apt update && sudo apt install -y git curl
 
-# Clone and deploy
+# Clone ONLY the infrastructure repo (script clones the rest)
 git clone https://github.com/Thermalog/thermalog-infrastructure.git
 cd thermalog-infrastructure
 sudo ./deploy-everything.sh
@@ -86,7 +93,7 @@ sudo ./deploy-everything.sh
 **What happens:**
 - Detects new server
 - Installs Docker, certbot, and other packages  
-- Clones application repositories
+- **Automatically clones** Thermalog-Backend and Thermalog-frontend repositories to `/root/`
 - Sets up all automation scripts
 - Configures systemd services
 - Sets up cron jobs
