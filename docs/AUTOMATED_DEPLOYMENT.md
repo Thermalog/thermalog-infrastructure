@@ -18,6 +18,14 @@ The Thermalog automated deployment system provides safe, continuous deployment w
 - **Health verification** before marking deployment as successful
 - **Backup creation** before each deployment
 
+### ✅ Enhanced Resilience (New!)
+- **Deployment state tracking** with detailed progress monitoring
+- **Timeout protection** prevents hanging builds (10min timeout)
+- **Interrupted deployment recovery** automatically detects and fixes incomplete deployments
+- **Comprehensive error logging** with timestamped state files
+- **Smart cleanup functions** restore git and Docker state on failures
+- **Debug archives** preserve failed deployment data for analysis
+
 ### ✅ Docker Management
 - **Automatic cleanup** after deployments
 - **Daily maintenance** at 2 AM
@@ -252,8 +260,61 @@ Configure system mail or add email notifications to scripts.
 - Sufficient disk space for backups
 - Network access to GitHub
 
+## Enhanced Deployment Resilience (v2.1)
+
+### Problem Solved
+This update addresses deployment interruptions that can occur due to:
+- System resource constraints (OOM, high load)
+- Docker daemon restarts or maintenance
+- Process termination (manual or automatic)
+- Network connectivity issues during build/deployment
+
+### New State Tracking System
+The enhanced auto-deploy script now creates state files to track deployment progress:
+
+```
+/tmp/deploy-backend-state
+├── STARTED: 2025-09-12 01:00:00
+├── CURRENT_COMMIT: abc123def456
+├── BACKUP_TAG: auto-backup-20250912-010000
+├── BUILD_STARTED: 2025-09-12 01:00:30
+├── BUILD_COMPLETED: 2025-09-12 01:03:45
+├── DEPLOY_STARTED: 2025-09-12 01:03:46
+├── DEPLOY_COMPLETED: 2025-09-12 01:03:50
+├── HEALTH_CHECK_STARTED: 2025-09-12 01:03:51
+├── HEALTH_CHECK_PASSED: 2025-09-12 01:04:05
+└── DEPLOYMENT_SUCCESS: 2025-09-12 01:04:05
+```
+
+### Recovery Process
+When the script detects interrupted deployments:
+
+1. **Detection**: Finds incomplete state files on startup
+2. **Analysis**: Determines where the deployment failed
+3. **Recovery**: Restores git state and Docker images from backups
+4. **Verification**: Ensures services are healthy after recovery
+5. **Archiving**: Saves failure data for debugging
+
+### New Timeout Protections
+- **Git operations**: 60-second timeout prevents hanging pulls
+- **Docker builds**: 10-minute timeout prevents infinite builds
+- **Process isolation**: Lock files prevent concurrent deployments
+
+### Debug Features
+Failed deployments now create detailed logs:
+- `/root/failed-deploy-YYYYMMDD-HHMMSS.log` - Normal failures with recovery
+- `/root/critical-deploy-failure-YYYYMMDD-HHMMSS.log` - Needs manual intervention
+- `/root/unrecoverable-deploy-YYYYMMDD-HHMMSS.log` - Insufficient data to recover
+
+### Usage
+The enhanced features work automatically - no configuration needed. The script:
+- Checks for interrupted deployments every 5 minutes
+- Automatically recovers services that were left in inconsistent states
+- Provides detailed logging for any issues encountered
+
 ## Version History
 
+- **v2.1**: Enhanced deployment resilience with state tracking and recovery
 - **v2.0**: Added automated deployment with health checks
 - **v1.5**: Implemented Docker cleanup automation
 - **v1.0**: Basic health check API integration
