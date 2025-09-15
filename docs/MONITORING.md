@@ -9,7 +9,10 @@ The monitoring system uses **Uptime Kuma** for real-time service monitoring comb
 ## Components
 
 ### 1. Uptime Kuma Dashboard
-- **URL:** `http://SERVER_IP:3002` or `https://monitoring.thermalog.com.au`
+- **Primary URL:** `https://dashboard.thermalog.com.au/monitoring/` (SSL-enabled)
+- **Alternative URLs:** 
+  - `http://SERVER_IP:3002` (direct access)
+  - `https://monitoring.thermalog.com.au` (dedicated subdomain)
 - **Purpose:** Web-based monitoring dashboard
 - **Features:** Real-time status, charts, history, maintenance windows
 

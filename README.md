@@ -24,7 +24,7 @@ The system includes comprehensive crash reporting and monitoring:
 - **Real-time monitoring** via Uptime Kuma dashboard
 - **Email alerts** for service failures and recoveries  
 - **24/7 automated checking** every 2 minutes
-- **Web dashboard** at `http://SERVER_IP:3002`
+- **SSL-enabled dashboard** at `https://dashboard.thermalog.com.au/monitoring/`
 
 See [MONITORING.md](docs/MONITORING.md) for detailed setup instructions.
 
