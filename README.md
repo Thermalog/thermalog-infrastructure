@@ -19,6 +19,15 @@ sudo ./deploy-everything.sh
 
 **⚡ The script automatically clones Thermalog-Backend and Thermalog-frontend repositories for you!**
 
+### 📊 Monitoring & Alerts
+The system includes comprehensive crash reporting and monitoring:
+- **Real-time monitoring** via Uptime Kuma dashboard
+- **Email alerts** for service failures and recoveries  
+- **24/7 automated checking** every 2 minutes
+- **Web dashboard** at `http://SERVER_IP:3002`
+
+See [MONITORING.md](docs/MONITORING.md) for detailed setup instructions.
+
 ### Automated Deployment
 ```bash
 # Setup automated deployment (run once)

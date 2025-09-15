@@ -11,8 +11,6 @@ services:
       - "3001:3001"
     env_file:
       - ./Thermalog-Backend/.env
-    # depends_on:
-    #   - timescaledb
     networks:
       - app-network
     command: >
@@ -51,24 +49,23 @@ services:
     networks:
       - app-network
 
-  # timescaledb:
-  #   image: timescale/timescaledb:latest-pg14
-  #   container_name: timescaledb
-  #   environment:
-  #     POSTGRES_USER: postgres
-  #     POSTGRES_PASSWORD: password
-  #     POSTGRES_DB: mydatabase
-  #   restart: always
-  #   ports:
-  #     - "5434:5432"
-  #   volumes:
-  #     - timescale-data:/var/lib/postgresql/data
-  #   networks:
-  #     - app-network
-
-# volumes:
-#   timescale-data:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: always
+    ports:
+      - "3002:3001"
+    volumes:
+      - uptime-kuma-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - app-network
+    environment:
+      - UPTIME_KUMA_PORT=3001
 
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  uptime-kuma-data:
