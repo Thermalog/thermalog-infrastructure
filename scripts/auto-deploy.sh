@@ -18,13 +18,182 @@ NC='\033[0m'
 BACKEND_DIR="/root/Thermalog-Backend"
 FRONTEND_DIR="/root/Thermalog-frontend"
 COMPOSE_FILE="/root/docker-compose.yml"
-HEALTH_URL="http://localhost:3001/api/health"
+HEALTH_URL="https://localhost/api/health"
 LOG_FILE="/root/deployment.log"
 SLACK_WEBHOOK_URL=""  # Optional: Add Slack webhook for notifications
+
+# Email notification settings (HTTPS API)
+EMAIL_ENABLED="true"  # Set to "true" to enable email notifications
+EMAIL_FROM="notifications@thermalog.com.au"  # Sender email address
+EMAIL_TO="abid148@gmail.com,work.alishan@gmail.com,tahahanif24@gmail.com"    # Recipient email addresses
+EMAIL_API_KEY="${SENDGRID_API_KEY}"  # SendGrid API Key from environment variable
+EMAIL_METHOD="sendgrid"  # Options: sendgrid, emailjs, webhook
+
+# Email consolidation settings
+EMAIL_SUMMARY=""  # Accumulates messages for consolidated email
+EMAIL_FINAL_STATUS=""  # Tracks overall deployment status
 
 # Logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a $LOG_FILE
+}
+
+# Email sending function
+send_email() {
+    local subject=$1
+    local message=$2
+    local priority=${3:-"normal"}  # normal, high, or low
+    
+    # Only send email if enabled and all required fields are set
+    if [ "$EMAIL_ENABLED" != "true" ] || [ -z "$EMAIL_FROM" ] || [ -z "$EMAIL_TO" ]; then
+        return 0
+    fi
+    
+    # Log the notification regardless of sending method
+    local log_message="EMAIL NOTIFICATION: [$subject] $message (To: $EMAIL_TO, Priority: $priority)"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $log_message" >> /root/email-notifications.log
+    
+    # Send via HTTPS API if API key is configured
+    if [ ! -z "$EMAIL_API_KEY" ]; then
+        case "$EMAIL_METHOD" in
+            "sendgrid")
+                send_email_sendgrid "$subject" "$message" "$priority"
+                ;;
+            "emailjs")
+                send_email_emailjs "$subject" "$message" "$priority"
+                ;;
+            "webhook")
+                send_email_webhook "$subject" "$message" "$priority"
+                ;;
+            *)
+                echo "Unknown email method: $EMAIL_METHOD" >> /root/email-notifications.log
+                ;;
+        esac
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] EMAIL_API_KEY not set - email logged only" >> /root/email-notifications.log
+    fi
+}
+
+# SendGrid API email function
+send_email_sendgrid() {
+    local subject=$1
+    local message=$2
+    local priority=$3
+    
+    # Convert \n sequences to actual newlines for proper JSON formatting
+    local formatted_message=$(echo -e "$message")
+    
+    # Create JSON payload with proper escaping using jq if available, otherwise manual escaping
+    if command -v jq >/dev/null 2>&1; then
+        # Convert comma-separated emails to array format
+        local email_array=$(echo "$EMAIL_TO" | tr ',' '\n' | jq -R '{email: .}' | jq -s .)
+        
+        local json_payload=$(jq -n \
+            --argjson to "$email_array" \
+            --arg subject "$subject" \
+            --arg from "$EMAIL_FROM" \
+            --arg message "$formatted_message
+
+---
+Thermalog Auto-Deploy System
+Server: $(hostname)
+Time: $(date)" \
+            '{
+                personalizations: [{
+                    to: $to,
+                    subject: $subject
+                }],
+                from: {email: $from, name: "Thermalog Auto-Deploy"},
+                content: [{
+                    type: "text/plain",
+                    value: $message
+                }]
+            }')
+    else
+        # Fallback: manual JSON escaping
+        local escaped_message=$(echo -e "$message" | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+        
+        # Build recipients array manually
+        local recipients_json=""
+        IFS=',' read -ra ADDR <<< "$EMAIL_TO"
+        for email in "${ADDR[@]}"; do
+            email=$(echo "$email" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')  # trim whitespace
+            if [ -z "$recipients_json" ]; then
+                recipients_json="{\"email\": \"$email\"}"
+            else
+                recipients_json="$recipients_json, {\"email\": \"$email\"}"
+            fi
+        done
+        
+        local json_payload=$(cat << EOF
+{
+  "personalizations": [
+    {
+      "to": [$recipients_json],
+      "subject": "$subject"
+    }
+  ],
+  "from": {"email": "$EMAIL_FROM", "name": "Thermalog Auto-Deploy"},
+  "content": [
+    {
+      "type": "text/plain",
+      "value": "$escaped_message\\n\\n---\\nThermalog Auto-Deploy System\\nServer: $(hostname)\\nTime: $(date)"
+    }
+  ]
+}
+EOF
+)
+    fi
+    
+    curl -s -X POST \
+        -H "Authorization: Bearer $EMAIL_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d "$json_payload" \
+        "https://api.sendgrid.com/v3/mail/send" \
+        > /dev/null 2>&1 && \
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Email sent via SendGrid API" >> /root/email-notifications.log || \
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to send via SendGrid API" >> /root/email-notifications.log
+}
+
+# Generic webhook email function
+send_email_webhook() {
+    local subject=$1
+    local message=$2
+    local priority=$3
+    
+    # Example webhook payload - customize for your webhook service
+    local webhook_payload=$(cat << EOF
+{
+  "to": "$EMAIL_TO",
+  "from": "$EMAIL_FROM",
+  "subject": "$subject",
+  "message": "$message",
+  "priority": "$priority",
+  "timestamp": "$(date -Iseconds)",
+  "server": "$(hostname)"
+}
+EOF
+)
+    
+    # Replace with your webhook URL
+    if [ ! -z "$WEBHOOK_URL" ]; then
+        curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "$webhook_payload" \
+            "$WEBHOOK_URL" \
+            > /dev/null 2>&1 && \
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Email sent via webhook" >> /root/email-notifications.log || \
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to send via webhook" >> /root/email-notifications.log
+    fi
+}
+
+# EmailJS function (alternative service)
+send_email_emailjs() {
+    local subject=$1
+    local message=$2
+    local priority=$3
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] EmailJS integration not implemented yet" >> /root/email-notifications.log
 }
 
 # Send notification (optional)
@@ -49,6 +218,60 @@ send_notification() {
         curl -X POST -H 'Content-type: application/json' \
             --data "{\"text\":\"$message\"}" \
             $SLACK_WEBHOOK_URL 2>/dev/null || true
+    fi
+    
+    # Accumulate messages for consolidated email
+    if [ "$EMAIL_ENABLED" = "true" ]; then
+        EMAIL_SUMMARY="${EMAIL_SUMMARY}$(date '+%H:%M:%S') - $message\n"
+        
+        # Track the most severe status for final email
+        case "$status" in
+            "error")
+                EMAIL_FINAL_STATUS="error"
+                ;;
+            "warning")
+                if [ "$EMAIL_FINAL_STATUS" != "error" ]; then
+                    EMAIL_FINAL_STATUS="warning"
+                fi
+                ;;
+            "success")
+                if [ -z "$EMAIL_FINAL_STATUS" ]; then
+                    EMAIL_FINAL_STATUS="success"
+                fi
+                ;;
+        esac
+    fi
+}
+
+# Send consolidated email summary
+send_consolidated_email() {
+    if [ "$EMAIL_ENABLED" = "true" ] && [ ! -z "$EMAIL_SUMMARY" ]; then
+        local email_subject="Thermalog Deployment"
+        local email_priority="normal"
+        
+        # Set subject and priority based on final status
+        case "$EMAIL_FINAL_STATUS" in
+            "success")
+                email_subject="✅ Thermalog Deployment Complete"
+                ;;
+            "error")
+                email_subject="❌ Thermalog Deployment Issues"
+                email_priority="high"
+                ;;
+            "warning")
+                email_subject="⚠️ Thermalog Deployment Completed with Warnings"
+                ;;
+            *)
+                email_subject="ℹ️ Thermalog Deployment Summary"
+                ;;
+        esac
+        
+        local consolidated_message="Deployment Summary:\n\n${EMAIL_SUMMARY}"
+        send_email "$email_subject" "$consolidated_message" "$email_priority"
+        
+        # Reset for next run
+        EMAIL_SUMMARY=""
+        EMAIL_FINAL_STATUS=""
     fi
 }
 
@@ -136,7 +359,7 @@ check_health() {
     local attempt=1
     
     while [ $attempt -le $max_attempts ]; do
-        HEALTH_RESPONSE=$(curl -s $HEALTH_URL 2>/dev/null || echo "{}")
+        HEALTH_RESPONSE=$(curl -s -k $HEALTH_URL 2>/dev/null || echo "{}")
         HEALTH_STATUS=$(echo $HEALTH_RESPONSE | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('status', 'unknown'))" 2>/dev/null || echo "error")
         DB_STATUS=$(echo $HEALTH_RESPONSE | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('database', {}).get('status', 'unknown'))" 2>/dev/null || echo "error")
         
@@ -220,7 +443,7 @@ deploy_service() {
     echo "BUILD_STARTED:$(date '+%Y-%m-%d %H:%M:%S')" >> $DEPLOY_STATE_FILE
     
     # Build with timeout (10 minutes) and capture output
-    if ! timeout 600 docker compose build thermalog-$service 2>&1 | tee -a $DEPLOY_STATE_FILE; then
+    if ! timeout 600 docker compose build thermalog-$service --no-cache 2>&1 | tee -a $DEPLOY_STATE_FILE; then
         send_notification "❌ Build failed for $service (timeout or error)" "error"
         cleanup_failed_deployment "$service" "$dir" "$CURRENT_COMMIT" "$DEPLOY_STATE_FILE"
         return 1
@@ -383,6 +606,9 @@ main() {
     echo ""
     echo -e "${CYAN}═══════════════════════════════════════════════════════${NC}"
     log "Automated deployment check completed"
+    
+    # Send consolidated email summary if there were any notifications
+    send_consolidated_email
 }
 
 # Create lock file to prevent multiple instances

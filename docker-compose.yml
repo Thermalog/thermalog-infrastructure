@@ -1,0 +1,69 @@
+version: "3.8"
+
+services:
+  thermalog-backend:
+    build:
+      context: ./Thermalog-Backend
+      dockerfile: Dockerfile
+    container_name: thermalog-backend
+    restart: always
+    env_file:
+      - ./Thermalog-Backend/.env
+    networks:
+      - app-network
+    command: >
+      /bin/bash -c "
+      npx prisma generate &&
+      timeout 30 npx prisma migrate deploy --skip-generate || echo 'Migration skipped' &&
+      pm2-runtime start dist/main.js --name 'Thermalog-Backend' --instances 1"
+
+  thermalog-frontend:
+    build:
+      context: ./Thermalog-frontend
+      dockerfile: Dockerfile
+    container_name: thermalog-frontend
+    env_file:
+      - ./Thermalog-frontend/.env
+    restart: always
+    depends_on:
+      - thermalog-backend
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/fullchain.pem:/etc/ssl/certs/fullchain.pem
+      - ./nginx/privkey.pem:/etc/ssl/certs/privkey.pem
+    depends_on:
+      - thermalog-frontend
+      - thermalog-backend
+    networks:
+      - app-network
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: always
+    ports:
+      - "3002:3001"  # Temporarily exposed - will secure via nginx
+    volumes:
+      - uptime-kuma-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - app-network
+    environment:
+      - UPTIME_KUMA_PORT=3001
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  uptime-kuma-data:
