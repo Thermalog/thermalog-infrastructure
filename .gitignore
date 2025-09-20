@@ -10,7 +10,6 @@
 *.crt
 
 # Backup files
-backups/
 *.tar.gz
 *.zip
 
