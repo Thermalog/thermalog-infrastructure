@@ -45,48 +45,61 @@ See [MONITORING.md](docs/MONITORING.md) for detailed setup instructions.
 
 ### Creating Backups
 ```bash
-# Create a complete backup
+# Create a complete encrypted backup (recommended)
 ./scripts/backup.sh
+
+# Extract encrypted backup
+./extract-backup.sh /path/to/backup.tar.gz.enc
 ```
+
+**Note**: Backups are encrypted and tracked in the repository for disaster recovery. See [BACKUP_DOCUMENTATION.md](BACKUP_DOCUMENTATION.md) for complete backup procedures.
 
 ## 📁 Repository Structure
 
 ```
 thermalog-infrastructure/
 ├── docker/                          # Docker orchestration
-│   ├── docker-compose.yml           # Base configuration
+│   ├── docker-compose.yml           # Legacy configuration
 │   └── docker-compose.prod.yml      # Production overrides
 ├── nginx/                           # Nginx configuration
 │   └── default.conf                 # Main nginx config
 ├── scripts/                         # Automation scripts
 │   ├── setup-server.sh             # Complete server setup
-│   ├── auto-deploy.sh              # 🆕 Automated deployment with health checks
-│   ├── docker-cleanup.sh           # 🆕 Docker cleanup and maintenance
-│   ├── setup-auto-deploy.sh        # 🆕 Setup automation (cron jobs)
-│   ├── ssl-renew.sh                # 🆕 SSL certificate auto-renewal
-│   ├── startup-thermalog.sh        # 🆕 Server restart verification
+│   ├── auto-deploy.sh              # Automated deployment with health checks
+│   ├── docker-cleanup.sh           # Docker cleanup and maintenance
+│   ├── setup-auto-deploy.sh        # Setup automation (cron jobs)
+│   ├── ssl-renew.sh                # SSL certificate auto-renewal
+│   ├── startup-thermalog.sh        # Server restart verification
 │   ├── deploy.sh                    # Manual deployment (legacy)
 │   ├── backup.sh                    # Backup creation
 │   ├── install-ssl-hooks.sh         # SSL automation setup
+│   ├── uptime-kuma-alerts.sh        # Monitoring alerts (legacy)
+│   ├── uptime-kuma-alerts-improved.sh # Enhanced monitoring alerts
 │   └── ssl-hooks/                   # Certificate renewal hooks
 │       ├── pre/stop-nginx.sh        # Pre-renewal hook
 │       ├── post/start-nginx.sh      # Post-renewal hook
 │       └── deploy/docker-nginx.sh   # Certificate deployment
 ├── configs/                         # Configuration templates
-│   ├── health-check.json           # 🆕 Health check configuration
-│   ├── docker-cleanup.json         # 🆕 Docker cleanup settings
-│   ├── systemd/                    # 🆕 Systemd service files
-│   │   ├── thermalog.service       # 🆕 Main application service
-│   │   └── thermalog-startup.service # 🆕 Startup verification service
-│   ├── .env.backend.template        # Backend environment template
-│   └── .env.frontend.template       # Frontend environment template
+│   ├── health-check.json           # Health check configuration
+│   ├── docker-cleanup.json         # Docker cleanup settings
+│   └── systemd/                    # Systemd service files
+│       ├── thermalog.service       # Main application service
+│       └── thermalog-startup.service # Startup verification service
+├── backups/                         # Encrypted backup storage
+│   └── *.tar.gz.enc                # Encrypted backup files (tracked)
 ├── docs/                           # Documentation
-│   ├── AUTOMATED_DEPLOYMENT.md    # 🆕 Automated deployment guide
-│   ├── SSL_RENEWAL.md              # 🆕 SSL certificate auto-renewal
-│   ├── SERVER_RESTART_RESILIENCE.md # 🆕 Server restart recovery
+│   ├── AUTOMATED_DEPLOYMENT.md    # Automated deployment guide
+│   ├── SSL_RENEWAL.md              # SSL certificate auto-renewal
+│   ├── SERVER_RESTART_RESILIENCE.md # Server restart recovery
+│   ├── MONITORING.md               # Monitoring system documentation
 │   ├── deployment.md               # Manual deployment guide
 │   ├── ssl-setup.md                # SSL configuration
 │   └── troubleshooting.md          # Common issues
+├── BACKUP_DOCUMENTATION.md         # Comprehensive backup guide
+├── DEPLOYMENT_GUIDE.md             # Complete deployment documentation
+├── deploy-everything.sh             # Master deployment script
+├── extract-backup.sh               # Backup extraction utility
+├── docker-compose.yml              # Main Docker configuration
 └── README.md                       # This file
 ```
 
@@ -204,17 +217,21 @@ certbot certificates
 
 ### Environment Variables
 
-1. **Backend Configuration** (`/path/to/Thermalog-Backend/.env`):
+1. **Backend Configuration** (`./Thermalog-Backend/.env`):
    ```bash
    DATABASE_URL="postgresql://username:password@host:port/database"
-   ALLOWED_ORIGIN=https://your-domain.com
+   ALLOWED_ORIGIN=https://dashboard.thermalog.com.au
+   JWT_SECRET=your-jwt-secret-key
+   PORT=3001
    ```
 
-2. **Frontend Configuration** (`/path/to/Thermalog-frontend/.env`):
+2. **Frontend Configuration** (`./Thermalog-frontend/.env`):
    ```bash
-   REACT_APP_API_URL=https://your-domain.com/api
-   REACT_APP_WEB_SOCKET_URL=wss://your-domain.com
+   REACT_APP_API_URL=https://dashboard.thermalog.com.au/api
+   REACT_APP_WEB_SOCKET_URL=wss://dashboard.thermalog.com.au
    ```
+
+**Note**: Environment files are automatically configured during deployment. See `configs/` directory for templates.
 
 ### Domain Configuration
 
@@ -261,7 +278,10 @@ docker logs nginx --tail 100
 
 ### Backup Recovery
 ```bash
-# Extract backup
+# Extract encrypted backup (recommended)
+./extract-backup.sh backups/thermalog_server_backup_YYYYMMDD_HHMMSS_encrypted.tar.gz.enc
+
+# OR extract legacy unencrypted backup
 tar -xzf thermalog_backup_YYYYMMDD_HHMMSS.tar.gz
 
 # Restore SSL certificates
@@ -271,6 +291,8 @@ sudo cp -r thermalog_backup_*/letsencrypt/* /etc/letsencrypt/
 cp thermalog_backup_*/docker-compose.yml .
 cp thermalog_backup_*/nginx/default.conf nginx/
 ```
+
+**Note**: Encrypted backups provide enhanced security and are the recommended approach. See [BACKUP_DOCUMENTATION.md](BACKUP_DOCUMENTATION.md) for detailed recovery procedures.
 
 ## 🤝 Contributing
 

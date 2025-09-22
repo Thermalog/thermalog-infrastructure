@@ -52,7 +52,7 @@ services:
     container_name: uptime-kuma
     restart: always
     ports:
-      - "3002:3001"  # Temporarily exposed - will secure via nginx
+      - "3002:3001"  # Secured via nginx reverse proxy at /monitoring/
     volumes:
       - uptime-kuma-data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
