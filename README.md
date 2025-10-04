@@ -2,6 +2,13 @@
 
 Complete infrastructure configuration for the Thermalog application, enabling easy deployment and disaster recovery.
 
+## 📚 Documentation Quick Links
+
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Visual system architecture with Mermaid diagrams
+- **[OPERATIONS.md](docs/OPERATIONS.md)** - Quick operational commands and troubleshooting
+- **[DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md)** - Complete server recovery procedures
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - New server deployment reference
+
 ## 🚀 Quick Start
 
 ### 🆕 One-Click Deployment (Recommended)
@@ -94,13 +101,14 @@ thermalog-infrastructure/
 ├── backups/                         # Encrypted backup storage
 │   └── *.tar.gz.enc                # Encrypted backup files (tracked)
 ├── docs/                           # Comprehensive documentation
+│   ├── ARCHITECTURE.md             # System architecture with diagrams
+│   ├── OPERATIONS.md               # Quick operational reference
 │   ├── AUTOMATED_DEPLOYMENT.md    # Automated deployment system
 │   ├── SSL_RENEWAL.md              # Dual SSL certificate renewal
 │   ├── SERVER_RESTART_RESILIENCE.md # Restart recovery system
 │   ├── MONITORING.md               # Uptime Kuma monitoring
 │   ├── EMQX_PLATFORM.md            # EMQX IoT platform guide
 │   ├── DUAL_SSL_CERTIFICATES.md    # Dual certificate system
-│   ├── CURRENT_ARCHITECTURE.md     # Complete system architecture
 │   ├── DISASTER_RECOVERY.md        # Recovery procedures
 │   ├── deployment.md               # Deployment procedures
 │   ├── ssl-setup.md                # SSL configuration details
