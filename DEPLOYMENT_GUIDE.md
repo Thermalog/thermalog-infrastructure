@@ -50,23 +50,31 @@ Installs required system packages:
 - Enables Docker and cron services
 
 ### 📋 Script Deployment
-Copies all automation scripts to `/root/`:
-- `auto-deploy.sh` - GitHub monitoring and deployment every 5 minutes
-- `docker-cleanup.sh` - Docker maintenance and cleanup
-- `ssl-renew.sh` - SSL certificate renewal via cron
-- `startup-thermalog.sh` - Server restart verification and recovery
-- `setup-auto-deploy.sh` - Auto-deployment configuration
+Copies all automation scripts to `/root/thermalog-ops/scripts/`:
+- `deployment/auto-deploy.sh` - GitHub monitoring and deployment every 5 minutes
+- `maintenance/docker-cleanup.sh` - Docker maintenance and cleanup
+- `maintenance/ssl-renew-dual.sh` - Dual SSL certificate renewal via cron
+- `deployment/startup-thermalog.sh` - Server restart verification and recovery
+- `deployment/setup-auto-deploy.sh` - Auto-deployment configuration
+- `backup/create-encrypted-backup.sh` - Encrypted backup creation
+- `monitoring/uptime-kuma-alerts-improved.sh` - Enhanced monitoring alerts
 
 ### 🔧 Service Configuration
 Sets up systemd services:
-- `thermalog.service` - Main application stack
+- `thermalog.service` - Main application stack (Backend, Frontend, Nginx)
 - `thermalog-startup.service` - Boot-time verification and recovery
+- `thermalog-shutdown.service` - Graceful shutdown handler
+- `emqx-platform.service` - EMQX IoT platform (MQTT broker + PostgreSQL/TimescaleDB)
 
 ### ⏰ Automation Setup
-Configures cron jobs:
+Configures cron jobs (Sydney Time = UTC+10/11):
 - **Every 5 minutes**: Auto-deployment from GitHub
-- **Daily at 2 AM**: Docker cleanup and maintenance
-- **Twice daily (3:15 AM & 3:15 PM)**: SSL certificate renewal
+- **Every 2 minutes**: Uptime Kuma monitoring alerts
+- **Daily at 2 AM UTC**: Docker cleanup and maintenance
+- **Every 12 hours**: Process cleanup
+- **Twice daily (3:15 AM & 3:15 PM UTC)**: Dual SSL certificate renewal
+- **Daily at 3 AM Sydney (17:00 UTC)**: Comprehensive backup
+- **Weekly Sunday 4 AM Sydney (18:00 UTC Sat)**: Backup verification
 - **After boot**: Startup verification and recovery
 
 ### 📁 Repository Management
@@ -171,10 +179,13 @@ thermalog-frontend  Up 2 minutes        80/tcp
 ### Automation Status
 ```
 Cron Jobs Configured:
-  */5 * * * * /root/auto-deploy.sh >> /root/deployment-cron.log 2>&1
-  0 2 * * * /root/docker-cleanup.sh >> /root/docker-cleanup-cron.log 2>&1
-  15 3,15 * * * sleep $((RANDOM % 3600)) && /root/ssl-renew.sh >> /root/ssl-renewal.log 2>&1
-  @reboot sleep 60 && /root/startup-thermalog.sh >> /root/startup-thermalog.log 2>&1
+  */5 * * * * /root/thermalog-ops/scripts/deployment/auto-deploy.sh >> /root/thermalog-ops/logs/deployment/auto-deploy-cron.log 2>&1
+  */2 * * * * /root/thermalog-ops/scripts/monitoring/uptime-kuma-alerts-improved.sh >> /root/thermalog-ops/logs/monitoring/uptime-alerts.log 2>&1
+  0 2 * * * /root/thermalog-ops/scripts/maintenance/docker-cleanup.sh >> /root/thermalog-ops/logs/maintenance/docker-cleanup-cron.log 2>&1
+  0 */12 * * * /root/thermalog-ops/scripts/deployment/cleanup_processes.sh >> /root/thermalog-ops/logs/maintenance/process-cleanup-cron.log 2>&1
+  15 3,15 * * * /root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh >> /root/thermalog-ops/logs/maintenance/ssl-renewal.log 2>&1
+  0 17 * * * /root/thermalog-infrastructure/scripts/backup.sh >> /root/thermalog-ops/logs/maintenance/backup.log 2>&1
+  0 18 * * 6 /root/thermalog-infrastructure/scripts/verify-latest-backup.sh >> /root/thermalog-ops/logs/maintenance/backup-verify.log 2>&1
 ```
 
 ## Troubleshooting

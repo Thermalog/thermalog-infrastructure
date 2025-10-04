@@ -23,11 +23,20 @@ The monitoring system uses **Uptime Kuma** for real-time service monitoring comb
 - **Alert Types:** DOWN, UP, PENDING status changes
 
 ### 3. Monitored Services
+
+**Main Application Stack:**
 - **Backend Service** (Port 3001 check)
 - **Frontend Service** (Port 80 check)
-- **Nginx Proxy** (Port 80 check)
+- **Nginx Proxy** (Port 80/443 check with dual SSL)
 - **Backend API Health** (HTTP health endpoint)
 - **Frontend Dashboard** (HTTPS external check)
+
+**EMQX IoT Platform:**
+- **EMQX Broker** (MQTT ports 1883/8883)
+- **IoT PostgreSQL/TimescaleDB** (Port 5432 check)
+- **EMQX Dashboard** (Port 18083 HTTP check)
+- **MQTT SSL Connection** (Port 8883 TLS check)
+- **Device Provisioning Service** (API health check)
 
 ## Setup Instructions
 
@@ -52,23 +61,29 @@ The system uses the existing SendGrid API configuration from `auto-deploy.sh`:
 ## Files Structure
 
 ```
-/root/
-├── docker-compose.yml          # Updated with Uptime Kuma service
-├── uptime-kuma-alerts.sh      # Main monitoring script
-└── nginx/default.conf         # Updated with monitoring routes
+/root/thermalog-ops/
+├── scripts/monitoring/
+│   ├── uptime-kuma-alerts-improved.sh   # Enhanced monitoring script
+│   ├── uptime-kuma-alerts.sh            # Basic monitoring script
+│   ├── setup-monitoring.sh              # Monitoring setup
+│   └── configure-monitors.sh            # Monitor configuration
+├── config/
+│   └── docker-compose.yml               # Main docker-compose with Uptime Kuma
+└── logs/monitoring/
+    └── uptime-alerts.log                # Monitoring alerts log
+
+/root/Config/nginx/
+└── default.conf                         # Nginx config with monitoring routes
 
 /root/thermalog-infrastructure/
-├── docker/docker-compose.yml  # Infrastructure docker-compose
-├── scripts/uptime-kuma-alerts.sh # Monitoring script backup
-├── nginx/default.conf         # Nginx configuration
-└── docs/MONITORING.md         # This documentation
+└── docs/MONITORING.md                   # This documentation
 ```
 
 ## Cron Configuration
 
 The monitoring script runs every 2 minutes:
 ```bash
-*/2 * * * * /root/uptime-kuma-alerts.sh >> /root/uptime-alerts.log 2>&1
+*/2 * * * * /root/thermalog-ops/scripts/monitoring/uptime-kuma-alerts-improved.sh >> /root/thermalog-ops/logs/monitoring/uptime-alerts.log 2>&1
 ```
 
 ## Alert Examples
@@ -123,10 +138,14 @@ Subject: ✅ Thermalog Monitor Alert: Backend Service RECOVERED
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 # Check monitoring logs
-tail -f /root/uptime-alerts.log
+tail -f /root/thermalog-ops/logs/monitoring/uptime-alerts.log
 
 # Check Uptime Kuma logs
 docker logs uptime-kuma --tail=50
+
+# Check EMQX monitoring
+docker logs emqx --tail=50
+docker logs iot-postgres --tail=50
 ```
 
 ### Monitor Database Access

@@ -6,11 +6,11 @@
 set -e
 
 # Source the existing email function
-source /root/auto-deploy.sh
+source /root/thermalog-ops/scripts/deployment/auto-deploy.sh
 
 # Configuration
 KUMA_DB="/var/lib/docker/volumes/root_uptime-kuma-data/_data/kuma.db"
-ALERT_LOG="/root/uptime-alerts.log"
+ALERT_LOG="/root/thermalog-ops/logs/monitoring/uptime-alerts.log"
 STATE_FILE="/tmp/uptime-kuma-state"
 
 log_alert() {

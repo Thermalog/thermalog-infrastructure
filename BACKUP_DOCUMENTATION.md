@@ -2,23 +2,41 @@
 
 ## Overview
 
-The Thermalog server backup system provides comprehensive backup and recovery capabilities for all critical server configuration files, environment variables, SSL certificates, and operational data. The system supports both regular and encrypted backups.
+The Thermalog server backup system provides comprehensive backup and recovery capabilities for all critical server configuration files, environment variables, SSL certificates, and operational data. The system supports both unencrypted (for fast local recovery) and encrypted backups (for secure off-site storage).
+
+**Two Backup Scripts:**
+- **`/root/thermalog-infrastructure/scripts/backup.sh`** - Creates unencrypted backups (automated daily)
+- **`/root/thermalog-ops/scripts/backup/create-encrypted-backup.sh`** - Creates encrypted backups (manual, for off-site storage)
 
 ## Backup Components
 
-### What's Included
+### What's Included (UPDATED for EMQX Platform)
+- **PostgreSQL/TimescaleDB Database**: Complete dump of `iot_platform` database (compressed with gzip)
+- **Docker Volumes** (4 volumes - full backup):
+  - `thermalog_uptime-kuma-data` - Monitoring configuration and history
+  - `emqx-platform_postgres-data` - PostgreSQL/TimescaleDB database files
+  - `emqx-platform_emqx-data` - EMQX broker data and configuration
+  - `emqx-platform_emqx-log` - EMQX broker logs
 - **Configuration Scripts**: All shell scripts, YAML files, JSON configs from `/root/`
-- **Environment Variables**: `.env` files from all repositories (backend, frontend, infrastructure)
-- **Nginx Configuration**: Complete nginx setup including SSL certificates
-- **Systemd Services**: Service definitions for Thermalog components
-- **SSL Certificates**: All SSL/TLS certificates and keys
-- **Docker Volumes**: Uptime Kuma data and other persistent volumes
-- **System Information**: Current system status, containers, resource usage
-- **Network Configuration**: Host files, routing tables
-- **Monitoring Scripts**: All monitoring and alerting infrastructure
-- **Docker Configuration**: Docker daemon and compose configurations
-- **Crontab**: Scheduled tasks and automation
-- **Log Files**: Recent entries from critical log files (last 1000 lines)
+- **Environment Variables**: `.env` files from ALL repositories - **FULL backup including sensitive data**:
+  - Backend .env (`/root/Thermalog-Backend/.env`)
+  - Frontend .env (`/root/Thermalog-frontend/.env`)
+  - Infrastructure .env (`/root/thermalog-infrastructure/.env`)
+  - EMQX Platform .env (`/root/emqx-platform/.env`)
+- **Nginx Configuration**: Complete nginx setup from `/root/nginx/` plus active container config
+- **EMQX Platform**: Complete configuration (docker-compose.yml, config files, provisioning service)
+- **Thermalog-ops Directory**: All operational scripts (`/root/thermalog-ops/scripts/`, config, docs)
+- **Systemd Services**: ALL service definitions:
+  - thermalog.service
+  - thermalog-startup.service
+  - thermalog-shutdown.service
+  - emqx-platform.service
+- **SSL Certificates**: Complete `/etc/letsencrypt/` directory (dual certificates: ECDSA + RSA)
+- **Docker Configurations**: Main docker-compose.yml (`/root/docker-compose.yml`) and all configs
+- **System Information**: Docker containers, images, volumes, resource usage, running services
+- **Network Configuration**: Hosts file, routing tables
+- **Crontab**: ALL scheduled tasks and automation
+- **Root Files**: All scripts, configs, and markdown files from `/root/`
 
 ### What's Excluded
 - Source code repositories (can be cloned from Git)
@@ -28,23 +46,39 @@ The Thermalog server backup system provides comprehensive backup and recovery ca
 
 ## Backup Scripts
 
-### Regular Backup: `create-server-backup.sh`
-Creates unencrypted compressed archive suitable for local storage or secure environments.
+### Main Backup Script: `/root/thermalog-infrastructure/scripts/backup.sh`
+**Primary backup script** - Creates comprehensive unencrypted backup for production use.
 
 ```bash
-# Run backup
-./create-server-backup.sh
+# Run backup manually
+/root/thermalog-infrastructure/scripts/backup.sh
 
 # Output location
-/root/thermalog_server_backup_YYYYMMDD_HHMMSS.tar.gz
+/var/backups/thermalog/YYYYMMDD_HHMMSS.tar.gz
+
+# Manifest file
+/var/backups/thermalog/YYYYMMDD_HHMMSS_manifest.txt
 ```
 
-### Encrypted Backup: `create-encrypted-backup.sh`
-Creates AES-256-CBC encrypted archive for secure storage and transmission.
+**Automated Schedule:** Daily at 3:00 AM via cron
+**Log File:** `/root/thermalog-ops/logs/maintenance/backup.log`
+**Retention:** Last 10 backups kept automatically
+
+**What it backs up:**
+- PostgreSQL database (pg_dump + gzip)
+- All 4 Docker volumes
+- Complete system configuration
+- SSL certificates (both ECDSA and RSA)
+- Environment files with secrets
+- EMQX platform configuration
+- All systemd services
+
+### Encrypted Backup: `/root/thermalog-ops/scripts/backup/create-encrypted-backup.sh`
+Creates AES-256-CBC encrypted archive for secure off-site storage and transmission.
 
 ```bash
 # Run encrypted backup
-./create-encrypted-backup.sh
+/root/thermalog-ops/scripts/backup/create-encrypted-backup.sh
 
 # Output location
 /root/thermalog-infrastructure/backups/thermalog_server_backup_YYYYMMDD_HHMMSS_encrypted.tar.gz.enc
@@ -54,6 +88,30 @@ Creates AES-256-CBC encrypted archive for secure storage and transmission.
 - Algorithm: AES-256-CBC with salt
 - Key: `ThermalogDigital!@#$`
 - Tool: OpenSSL
+- **Use for off-site backups only**
+
+**Note:** Contains identical data to main backup but encrypted. Keep encryption key separate from backup!
+
+### Backup Verification: `/root/thermalog-infrastructure/scripts/verify-latest-backup.sh`
+Verifies integrity of the latest backup archive.
+
+```bash
+# Run verification
+/root/thermalog-infrastructure/scripts/verify-latest-backup.sh
+
+# Verification report
+/var/backups/thermalog/YYYYMMDD_HHMMSS_verification.txt
+```
+
+**Automated Schedule:** Weekly at 4:00 AM on Sundays
+**Log File:** `/root/thermalog-ops/logs/maintenance/backup-verify.log`
+
+**Verification checks:**
+- Archive integrity (tar test)
+- File size within expected range (10MB - 500MB)
+- Database dump present and valid
+- All required components present
+- Backup age (warns if > 48 hours old)
 
 ## Backup Extraction
 
@@ -125,11 +183,22 @@ cd /tmp/restore/thermalog_server_backup_YYYYMMDD_HHMMSS
 # Backend environment
 cp env/backend.env /root/Thermalog-Backend/.env
 
-# Frontend environment  
+# Frontend environment
 cp env/frontend.env /root/Thermalog-frontend/.env
 
 # Infrastructure environment
 cp env/infrastructure.env /root/thermalog-infrastructure/.env
+
+# EMQX Platform environment (CRITICAL for IoT platform)
+cp env/emqx-platform.env /root/emqx-platform/.env
+```
+
+**Note:** Environment files contain sensitive credentials. Ensure proper file permissions:
+```bash
+chmod 600 /root/Thermalog-Backend/.env
+chmod 600 /root/Thermalog-frontend/.env
+chmod 600 /root/thermalog-infrastructure/.env
+chmod 600 /root/emqx-platform/.env
 ```
 
 #### 3. Restore System Configuration
@@ -166,12 +235,68 @@ cat crontab.txt
 crontab crontab.txt
 ```
 
-#### 6. Restore Docker Volumes
+#### 6. Restore PostgreSQL/TimescaleDB Database
 ```bash
-# For Uptime Kuma data
-docker volume create uptime-kuma-data
-docker run --rm -v uptime-kuma-data:/data -v $(pwd)/docker-volumes:/backup alpine tar xzf /backup/uptime-kuma-data.tar.gz -C /data
+# Ensure PostgreSQL container is running
+cd /root/emqx-platform && docker-compose up -d iot-postgres
+sleep 10  # Wait for PostgreSQL to start
+
+# Decompress the backup
+gunzip database/iot_platform.sql.gz
+
+# Drop existing database (CAUTION: This deletes all current data!)
+docker exec iot-postgres psql -U iotadmin -c "DROP DATABASE IF EXISTS iot_platform;"
+
+# Create fresh database
+docker exec iot-postgres psql -U iotadmin -c "CREATE DATABASE iot_platform;"
+
+# Restore database from backup
+docker exec -i iot-postgres psql -U iotadmin iot_platform < database/iot_platform.sql
+
+# Verify restoration
+docker exec iot-postgres psql -U iotadmin iot_platform -c "SELECT COUNT(*) FROM device_credentials;"
 ```
+
+**Important:** Database restoration will overwrite ALL existing data. Make sure you have a current backup before restoring!
+
+#### 7. Restore Docker Volumes
+```bash
+# Stop all containers first
+docker-compose -f /root/docker-compose.yml down
+cd /root/emqx-platform && docker-compose down
+
+# Restore Uptime Kuma volume
+docker volume create thermalog_uptime-kuma-data 2>/dev/null || true
+docker run --rm \
+  -v thermalog_uptime-kuma-data:/data \
+  -v $(pwd)/docker-volumes:/backup \
+  alpine tar xzf /backup/thermalog_uptime-kuma-data.tar.gz -C /data
+
+# Restore PostgreSQL data volume
+docker volume create emqx-platform_postgres-data 2>/dev/null || true
+docker run --rm \
+  -v emqx-platform_postgres-data:/data \
+  -v $(pwd)/docker-volumes:/backup \
+  alpine tar xzf /backup/emqx-platform_postgres-data.tar.gz -C /data
+
+# Restore EMQX data volume
+docker volume create emqx-platform_emqx-data 2>/dev/null || true
+docker run --rm \
+  -v emqx-platform_emqx-data:/data \
+  -v $(pwd)/docker-volumes:/backup \
+  alpine tar xzf /backup/emqx-platform_emqx-data.tar.gz -C /data
+
+# Restore EMQX log volume
+docker volume create emqx-platform_emqx-log 2>/dev/null || true
+docker run --rm \
+  -v emqx-platform_emqx-log:/data \
+  -v $(pwd)/docker-volumes:/backup \
+  alpine tar xzf /backup/emqx-platform_emqx-log.tar.gz -C /data
+```
+
+**Note:** Docker volumes contain persistent data. Choose either database dump restoration (step 6) OR volume restoration, not both!
+- **Use database dump**: If you want clean restoration with just data
+- **Use volume restoration**: If you want exact replica including all PostgreSQL internals
 
 #### 7. Restart Services
 ```bash
@@ -198,19 +323,39 @@ docker logs thermalog-frontend
 
 ## Backup Schedule
 
-### Recommended Schedule
-- **Daily encrypted backups** for production environments
-- **Weekly verification** of backup integrity
-- **Monthly backup rotation** (keep 12 monthly backups)
-- **Immediate backup** before major changes
+### Current Automated Schedule (Production)
+- ✅ **Daily Backup**: 3:00 AM Sydney time - Comprehensive backup of all components
+- ✅ **Weekly Verification**: 4:00 AM Sunday Sydney time - Integrity check of latest backup
+- ✅ **Automatic Retention**: Last 10 backups kept (older backups auto-deleted)
+- 📋 **Manual Backup**: Run anytime before major changes
 
-### Automation Setup
+### Active Cron Jobs
 ```bash
-# Add to crontab for daily 2 AM backup
-0 2 * * * /root/create-encrypted-backup.sh >> /root/backup.log 2>&1
+# Daily comprehensive backup at 3 AM Sydney time (17:00 UTC)
+0 17 * * * /root/thermalog-infrastructure/scripts/backup.sh >> /root/thermalog-ops/logs/maintenance/backup.log 2>&1
 
-# Weekly verification at 3 AM Sunday
-0 3 * * 0 /root/thermalog-infrastructure/extract-backup.sh -v $(ls -t /root/thermalog-infrastructure/backups/*.enc | head -1) >> /root/backup-verify.log 2>&1
+# Weekly backup verification at 4 AM Sunday Sydney time (18:00 UTC Saturday)
+0 18 * * 6 /root/thermalog-infrastructure/scripts/verify-latest-backup.sh >> /root/thermalog-ops/logs/maintenance/backup-verify.log 2>&1
+```
+
+**Note:** Server timezone is UTC, but cron jobs are scheduled for Sydney time (UTC+10/+11).
+
+### Backup Locations
+- **Main backups**: `/var/backups/thermalog/` (unencrypted, for fast local restoration)
+- **Encrypted backups**: `/root/thermalog-infrastructure/backups/` (for off-site storage)
+- **Logs**: `/root/thermalog-ops/logs/maintenance/backup.log`
+- **Verification logs**: `/root/thermalog-ops/logs/maintenance/backup-verify.log`
+
+### Manual Backup Commands
+```bash
+# Run daily backup manually
+/root/thermalog-infrastructure/scripts/backup.sh
+
+# Create encrypted backup for off-site storage
+/root/thermalog-ops/scripts/backup/create-encrypted-backup.sh
+
+# Verify latest backup
+/root/thermalog-infrastructure/scripts/verify-latest-backup.sh
 ```
 
 ## Security Considerations

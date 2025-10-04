@@ -14,25 +14,41 @@ All critical services are configured to start automatically on boot:
 systemctl list-unit-files | grep enabled
 
 # Key services:
-- docker.service (enabled)      # Docker daemon
-- cron.service (enabled)        # Cron scheduler  
-- thermalog.service (enabled)   # Main application stack
-- thermalog-startup.service (enabled) # Startup verification
+- docker.service (enabled)              # Docker daemon
+- cron.service (enabled)                # Cron scheduler
+- thermalog.service (enabled)           # Main application stack (Backend, Frontend, Nginx)
+- thermalog-startup.service (enabled)   # Startup verification and recovery
+- thermalog-shutdown.service (enabled)  # Graceful shutdown handler
+- emqx-platform.service (enabled)       # EMQX IoT platform (MQTT + PostgreSQL)
 ```
 
 ### Docker Containers
 All containers have restart policies configured:
 
 ```yaml
-# docker-compose.yml
+# Main Application Stack (/root/thermalog-ops/config/docker-compose.yml)
 services:
   thermalog-backend:
     restart: always
-  
+
   thermalog-frontend:
     restart: always
-    
+
   nginx:
+    restart: always
+
+  uptime-kuma:
+    restart: always
+
+# EMQX IoT Platform (/root/emqx-platform/docker-compose.yml)
+services:
+  iot-postgres:
+    restart: always
+
+  emqx:
+    restart: always
+
+  provisioning-service:
     restart: always
 ```
 
@@ -41,10 +57,14 @@ All automation continues after reboot:
 
 ```bash
 # Cron jobs that survive restart:
-*/5 * * * * /root/auto-deploy.sh              # Auto-deployment
-0 2 * * * /root/docker-cleanup.sh             # Docker cleanup
-@reboot sleep 60 && /root/startup-thermalog.sh # Startup verification
-15 3,15 * * * /root/ssl-renew.sh              # SSL renewal
+*/5 * * * * /root/thermalog-ops/scripts/deployment/auto-deploy.sh              # Auto-deployment
+*/2 * * * * /root/thermalog-ops/scripts/monitoring/uptime-kuma-alerts-improved.sh  # Monitoring alerts
+0 2 * * * /root/thermalog-ops/scripts/maintenance/docker-cleanup.sh            # Docker cleanup
+0 */12 * * * /root/thermalog-ops/scripts/deployment/cleanup_processes.sh       # Process cleanup
+15 3,15 * * * /root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh        # Dual SSL renewal
+0 17 * * * /root/thermalog-infrastructure/scripts/backup.sh                    # Daily backup
+0 18 * * 6 /root/thermalog-infrastructure/scripts/verify-latest-backup.sh      # Weekly verification
+@reboot sleep 60 && /root/thermalog-ops/scripts/deployment/startup-thermalog.sh # Startup verification
 ```
 
 ## Multi-Layer Recovery System

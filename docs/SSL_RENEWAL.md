@@ -1,119 +1,161 @@
-# SSL Certificate Auto-Renewal
+# Dual SSL Certificate Auto-Renewal
 
 ## Overview
 
-Thermalog infrastructure includes automated SSL certificate renewal using Let's Encrypt certificates. The system uses a Docker-aware renewal process that safely stops nginx during renewal and automatically restarts it with new certificates.
+Thermalog infrastructure uses **dual SSL certificates** (ECDSA + RSA) with automated renewal via Let's Encrypt. This dual-certificate approach ensures maximum browser compatibility while providing modern security for supported clients.
+
+The system uses a Docker-aware renewal process that safely stops nginx during renewal and automatically restarts it with both new certificates.
 
 ## Current Setup
 
-### Certificate Information
+### Dual Certificate Information
 - **Domain**: `dashboard.thermalog.com.au`
 - **Provider**: Let's Encrypt
-- **Certificate Type**: ECDSA
-- **Renewal Method**: Standalone HTTP challenge
+- **Certificate Types**:
+  - **ECDSA P-384** - Modern, efficient (preferred by modern browsers)
+  - **RSA 4096-bit** - Legacy compatibility (for older browsers/systems)
+- **Renewal Method**: Standalone HTTP challenge (both certificates)
+- **Script**: `/root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh`
 
 ### Auto-Renewal Schedule
 - **Frequency**: Twice daily at 3:15 AM and 3:15 PM UTC
-- **Random Delay**: 0-60 minutes to prevent rate limiting
 - **Renewal Threshold**: Only renews when <30 days remaining
-- **Method**: Cron job (simple and reliable)
+- **Method**: Cron job automation
+- **Log File**: `/root/thermalog-ops/logs/maintenance/ssl-renewal.log`
+
+### Why Dual Certificates?
+- **Modern Clients**: Use ECDSA for faster, more efficient cryptography
+- **Legacy Support**: RSA ensures compatibility with older browsers and systems
+- **Automatic Selection**: Nginx automatically serves the optimal certificate per client
+- **No Performance Impact**: Both certificates are small and load quickly
 
 ## Installation
 
-### 1. Deploy SSL Renewal Script
+### 1. Deploy Dual SSL Renewal Script
 ```bash
-# Copy script to server
-scp scripts/ssl-renew.sh root@server:/root/
-chmod +x /root/ssl-renew.sh
+# Script is deployed to thermalog-ops during setup
+# Location: /root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh
+chmod +x /root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh
 ```
 
 ### 2. Setup Cron Job
 ```bash
-# Add SSL renewal to crontab
-echo "15 3,15 * * * sleep \$((RANDOM \\% 3600)) && /root/ssl-renew.sh >> /root/ssl-renewal.log 2>&1" >> /tmp/cron_ssl
-crontab /tmp/cron_ssl
-rm /tmp/cron_ssl
+# Add to crontab (automated during deployment)
+15 3,15 * * * /root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh >> /root/thermalog-ops/logs/maintenance/ssl-renewal.log 2>&1
 ```
 
-## SSL Renewal Process
+### 3. Verify Installation
+```bash
+# Check cron job is configured
+crontab -l | grep ssl-renew-dual
+
+# Test script syntax
+bash -n /root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh
+
+# Check log directory exists
+ls -la /root/thermalog-ops/logs/maintenance/
+```
+
+## Dual SSL Renewal Process
 
 ### Automatic Renewal Flow
-1. **Certificate Check**
-   - Checks current certificate expiry
-   - Only proceeds if <30 days remaining
-   - Logs all actions for audit trail
+1. **Dual Certificate Check**
+   - Checks BOTH certificate expiry dates (ECDSA + RSA)
+   - Only proceeds if either certificate <30 days remaining
+   - Logs all actions for comprehensive audit trail
 
 2. **Docker-Safe Renewal**
    - Stops nginx container to free port 80
-   - Runs certbot with standalone authenticator
-   - Handles HTTP-01 challenges automatically
+   - Renews ECDSA certificate (P-384 key)
+   - Renews RSA certificate (4096-bit key)
+   - Both renewals use standalone HTTP-01 challenge
 
-3. **Certificate Deployment**
-   - Copies new certificates to nginx directory
+3. **Dual Certificate Deployment**
+   - Copies ECDSA certificates to nginx directory:
+     - `fullchain-ecdsa.pem`
+     - `privkey-ecdsa.pem`
+   - Copies RSA certificates to nginx directory:
+     - `fullchain-rsa.pem`
+     - `privkey-rsa.pem`
    - Sets proper file permissions (644/600)
-   - Updates both fullchain.pem and privkey.pem
 
 4. **Service Recovery**
-   - Restarts nginx container
+   - Restarts nginx container with both certificates
    - Verifies container is running
-   - Performs SSL connectivity test
+   - Performs HTTPS connectivity test for both certificates
 
 5. **Verification & Logging**
    - Tests HTTPS connectivity
-   - Logs new certificate expiry date
-   - Reports success/failure status
+   - Verifies nginx serves correct certificate per client
+   - Logs both certificate expiry dates
+   - Reports success/failure status to log file
 
 ### Manual Renewal
 ```bash
-# Test renewal process (dry run)
+# Test dual renewal process (dry run for both certificates)
 certbot renew --dry-run
 
-# Run renewal script manually
-/root/ssl-renew.sh
+# Run dual renewal script manually
+/root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh
 
-# Force renewal (for testing)
-certbot renew --force-renewal --standalone
+# Force renewal of both certificates (for testing)
+# ECDSA certificate
+certbot renew --force-renewal --cert-name dashboard.thermalog.com.au
+
+# RSA certificate
+certbot renew --force-renewal --cert-name dashboard.thermalog.com.au-rsa
 ```
 
 ## Configuration
 
 ### Script Configuration
-Edit `/root/ssl-renew.sh` to customize:
+Script location: `/root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh`
 
+**Key Variables:**
 ```bash
-DOMAIN="dashboard.thermalog.com.au"           # Your domain
-CERT_PATH="/etc/letsencrypt/live/$DOMAIN"     # Certificate path
-NGINX_CERT_DIR="/root/nginx"                  # Nginx certificate directory
-LOG_FILE="/root/ssl-renewal.log"              # Log file location
+DOMAIN="dashboard.thermalog.com.au"                      # Your domain
+NGINX_CERT_DIR="/root/nginx"                             # Nginx certificate directory (via symlink to /root/Config/nginx)
+LOG_FILE="/root/thermalog-ops/logs/maintenance/ssl-renewal.log"  # Log file location
+
+# Certificate paths
+ECDSA_CERT_PATH="/etc/letsencrypt/live/$DOMAIN"          # ECDSA certificate
+RSA_CERT_PATH="/etc/letsencrypt/live/$DOMAIN-rsa"        # RSA certificate
 ```
 
 ### Nginx Integration
 The script automatically:
-- Stops nginx before renewal
-- Copies certificates to nginx directory
+- Stops nginx before renewal (frees port 80)
+- Renews BOTH certificates (ECDSA + RSA)
+- Copies both certificates to nginx directory
 - Restarts nginx after successful renewal
-- Verifies SSL connectivity
+- Verifies HTTPS connectivity with both certificates
 
 ## Monitoring
 
 ### Log Files
-- **Main Log**: `/root/ssl-renewal.log` - SSL renewal activity
+- **Main Log**: `/root/thermalog-ops/logs/maintenance/ssl-renewal.log` - Dual SSL renewal activity
 - **Certbot Log**: `/var/log/letsencrypt/letsencrypt.log` - Detailed certbot logs
-- **Cron Log**: Check system cron logs for execution
+- **Cron Log**: Check `/root/thermalog-ops/logs/maintenance/` for cron execution
 
-### Check Certificate Status
+### Check Dual Certificate Status
 ```bash
-# View certificate information
+# View all certificates (both ECDSA and RSA)
 certbot certificates
 
-# Check certificate expiry
-openssl x509 -in /root/nginx/fullchain.pem -text -noout | grep "Not After"
+# Check ECDSA certificate expiry
+openssl x509 -in /root/nginx/fullchain-ecdsa.pem -text -noout | grep "Not After"
 
-# Test SSL connectivity
+# Check RSA certificate expiry
+openssl x509 -in /root/nginx/fullchain-rsa.pem -text -noout | grep "Not After"
+
+# Test HTTPS connectivity
 curl -I https://dashboard.thermalog.com.au
 
 # View renewal logs
-tail -f /root/ssl-renewal.log
+tail -f /root/thermalog-ops/logs/maintenance/ssl-renewal.log
+
+# Check which certificate is served to client
+openssl s_client -connect dashboard.thermalog.com.au:443 -servername dashboard.thermalog.com.au < /dev/null 2>/dev/null | openssl x509 -noout -text | grep -E "Public Key Algorithm|Signature Algorithm"
 ```
 
 ### Health Monitoring

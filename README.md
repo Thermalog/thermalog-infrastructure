@@ -45,36 +45,36 @@ See [MONITORING.md](docs/MONITORING.md) for detailed setup instructions.
 
 ### Creating Backups
 ```bash
-# Create a complete encrypted backup (recommended)
+# Create complete unencrypted backup (recommended for fast local recovery)
 ./scripts/backup.sh
 
-# Extract encrypted backup
+# Create encrypted backup (for secure off-site storage)
+# Note: Encrypted backup script is in thermalog-ops repository
+/root/thermalog-ops/scripts/backup/create-encrypted-backup.sh
+
+# Extract backup
 ./extract-backup.sh /path/to/backup.tar.gz.enc
 ```
 
-**Note**: Backups are encrypted and tracked in the repository for disaster recovery. See [BACKUP_DOCUMENTATION.md](BACKUP_DOCUMENTATION.md) for complete backup procedures.
+**Note**: Daily unencrypted backups are automated. Encrypted backups are stored securely for disaster recovery. See [BACKUP_DOCUMENTATION.md](BACKUP_DOCUMENTATION.md) for complete backup procedures.
 
 ## 📁 Repository Structure
 
 ```
 thermalog-infrastructure/
-├── docker/                          # Docker orchestration
-│   ├── docker-compose.yml           # Legacy configuration
-│   └── docker-compose.prod.yml      # Production overrides
-├── nginx/                           # Nginx configuration
-│   └── default.conf                 # Main nginx config
-├── scripts/                         # Automation scripts
+├── scripts/                         # Reference deployment scripts
 │   ├── setup-server.sh             # Complete server setup
-│   ├── auto-deploy.sh              # Automated deployment with health checks
-│   ├── docker-cleanup.sh           # Docker cleanup and maintenance
+│   ├── auto-deploy.sh              # Automated deployment (reference)
+│   ├── docker-cleanup.sh           # Docker cleanup automation
 │   ├── setup-auto-deploy.sh        # Setup automation (cron jobs)
-│   ├── ssl-renew.sh                # SSL certificate auto-renewal
+│   ├── ssl-renew.sh                # SSL certificate renewal (reference)
 │   ├── startup-thermalog.sh        # Server restart verification
-│   ├── deploy.sh                    # Manual deployment (legacy)
-│   ├── backup.sh                    # Backup creation
+│   ├── deploy.sh                    # Manual deployment
+│   ├── backup.sh                    # Unencrypted backup creation
+│   ├── verify-latest-backup.sh      # Backup integrity verification
 │   ├── install-ssl-hooks.sh         # SSL automation setup
-│   ├── uptime-kuma-alerts.sh        # Monitoring alerts (legacy)
-│   ├── uptime-kuma-alerts-improved.sh # Enhanced monitoring alerts
+│   ├── uptime-kuma-alerts.sh        # Monitoring alerts
+│   ├── uptime-kuma-alerts-improved.sh # Enhanced monitoring
 │   └── ssl-hooks/                   # Certificate renewal hooks
 │       ├── pre/stop-nginx.sh        # Pre-renewal hook
 │       ├── post/start-nginx.sh      # Post-renewal hook
@@ -82,26 +82,38 @@ thermalog-infrastructure/
 ├── configs/                         # Configuration templates
 │   ├── health-check.json           # Health check configuration
 │   ├── docker-cleanup.json         # Docker cleanup settings
+│   ├── .env.backend.template        # Backend environment template
+│   ├── .env.frontend.template       # Frontend environment template
 │   └── systemd/                    # Systemd service files
 │       ├── thermalog.service       # Main application service
-│       └── thermalog-startup.service # Startup verification service
+│       ├── thermalog-startup.service # Startup verification
+│       ├── thermalog-shutdown.service # Graceful shutdown
+│       └── emqx-platform.service    # EMQX IoT platform service
+├── nginx/                           # Nginx configuration reference
+│   └── default.conf                 # Reference nginx configuration
 ├── backups/                         # Encrypted backup storage
 │   └── *.tar.gz.enc                # Encrypted backup files (tracked)
-├── docs/                           # Documentation
-│   ├── AUTOMATED_DEPLOYMENT.md    # Automated deployment guide
-│   ├── SSL_RENEWAL.md              # SSL certificate auto-renewal
-│   ├── SERVER_RESTART_RESILIENCE.md # Server restart recovery
-│   ├── MONITORING.md               # Monitoring system documentation
-│   ├── deployment.md               # Manual deployment guide
-│   ├── ssl-setup.md                # SSL configuration
-│   └── troubleshooting.md          # Common issues
+├── docs/                           # Comprehensive documentation
+│   ├── AUTOMATED_DEPLOYMENT.md    # Automated deployment system
+│   ├── SSL_RENEWAL.md              # Dual SSL certificate renewal
+│   ├── SERVER_RESTART_RESILIENCE.md # Restart recovery system
+│   ├── MONITORING.md               # Uptime Kuma monitoring
+│   ├── EMQX_PLATFORM.md            # EMQX IoT platform guide
+│   ├── DUAL_SSL_CERTIFICATES.md    # Dual certificate system
+│   ├── CURRENT_ARCHITECTURE.md     # Complete system architecture
+│   ├── DISASTER_RECOVERY.md        # Recovery procedures
+│   ├── deployment.md               # Deployment procedures
+│   ├── ssl-setup.md                # SSL configuration details
+│   └── troubleshooting.md          # Common issues and solutions
 ├── BACKUP_DOCUMENTATION.md         # Comprehensive backup guide
-├── DEPLOYMENT_GUIDE.md             # Complete deployment documentation
+├── DEPLOYMENT_GUIDE.md             # Complete deployment reference
+├── MIGRATION_NOTES.md              # System evolution and changes
 ├── deploy-everything.sh             # Master deployment script
 ├── extract-backup.sh               # Backup extraction utility
-├── docker-compose.yml              # Main Docker configuration
 └── README.md                       # This file
 ```
+
+**Note**: Active production scripts are located in `/root/thermalog-ops/scripts/`. This repository contains reference scripts for deployment and documentation purposes.
 
 ## 🤖 Automated Deployment Features
 
@@ -143,20 +155,26 @@ thermalog-infrastructure/
 
 ## 📅 Complete Automation Schedule
 
-### Cron Jobs
+### Cron Jobs (Sydney Time = UTC+10/11)
 ```bash
 */5 * * * *    # Auto-deployment monitoring every 5 minutes
-0 2 * * *      # Docker cleanup daily at 2 AM
-15 3,15 * * *  # SSL renewal twice daily (3:15 AM/PM + random delay)
+*/2 * * * *    # Uptime Kuma monitoring alerts every 2 minutes
+0 2 * * *      # Docker cleanup daily at 2 AM UTC
+0 */12 * * *   # Process cleanup every 12 hours
+15 3,15 * * *  # Dual SSL renewal twice daily (3:15 AM/PM UTC)
+0 17 * * *     # Daily comprehensive backup (3 AM Sydney = 17:00 UTC)
+0 18 * * 6     # Weekly backup verification (4 AM Sunday Sydney = 18:00 UTC Sat)
 @reboot        # Startup verification after server restart
 ```
 
 ### Systemd Services
 ```bash
-thermalog.service         # Main application stack auto-start
-thermalog-startup.service # Startup verification and recovery
-docker.service            # Docker daemon (enabled)
-cron.service              # Cron scheduler (enabled)
+thermalog.service           # Main application stack (Backend, Frontend, Nginx)
+thermalog-startup.service   # Startup verification and recovery
+thermalog-shutdown.service  # Graceful shutdown handler
+emqx-platform.service       # EMQX IoT platform (MQTT + PostgreSQL)
+docker.service              # Docker daemon (enabled)
+cron.service                # Cron scheduler (enabled)
 ```
 
 ## 🔧 Prerequisites
@@ -168,20 +186,27 @@ cron.service              # Cron scheduler (enabled)
 
 ## 🎯 Features
 
-- **🐳 Docker Orchestration**: Complete containerized setup
-- **🔒 Automated SSL**: Let's Encrypt with automatic renewal
-- **📦 One-Command Setup**: Complete server setup in minutes  
-- **🚀 Easy Deployments**: Update with a single command
-- **💾 Comprehensive Backups**: Full configuration and data backups
-- **📚 Complete Documentation**: Detailed guides and troubleshooting
+- **🐳 Docker Orchestration**: Complete containerized setup with dual-stack architecture
+- **🔒 Dual SSL Certificates**: ECDSA + RSA certificates with automatic renewal
+- **📡 EMQX IoT Platform**: Full-featured MQTT broker with TimescaleDB integration
+- **📦 One-Command Setup**: Complete server setup in minutes
+- **🚀 Easy Deployments**: Automated deployment with health checks and rollback
+- **💾 Comprehensive Backups**: Daily automated backups with weekly verification
+- **📊 Real-time Monitoring**: Uptime Kuma with email alerts every 2 minutes
+- **🔄 Server Resilience**: Auto-recovery after restart with multi-layer redundancy
+- **📚 Complete Documentation**: Detailed guides for deployment and troubleshooting
 
 ## 🔄 SSL Certificate Management
 
-SSL certificates are automatically managed with:
-- **Initial Setup**: Certificates generated during server setup
-- **Auto-Renewal**: Certificates renewed 30 days before expiration
+Dual SSL certificates (ECDSA + RSA) are automatically managed with:
+- **Dual Certificates**: ECDSA (modern) + RSA (legacy browser compatibility)
+- **Initial Setup**: Both certificates generated during server setup
+- **Auto-Renewal**: Certificates renewed 30 days before expiration (twice daily checks)
 - **Zero Downtime**: Nginx restarted automatically after renewal
-- **Container Integration**: Certificates automatically deployed to containers
+- **Container Integration**: Both certificates automatically deployed to nginx container
+- **Browser Compatibility**: Nginx serves optimal certificate based on client capabilities
+
+See [docs/DUAL_SSL_CERTIFICATES.md](docs/DUAL_SSL_CERTIFICATES.md) for detailed information.
 
 ## 🛠️ Manual Commands
 

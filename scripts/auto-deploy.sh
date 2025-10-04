@@ -6,6 +6,9 @@
 
 set -e
 
+# Load environment variables
+[ -f /root/.env ] && source /root/.env
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,10 +20,15 @@ NC='\033[0m'
 # Configuration
 BACKEND_DIR="/root/Thermalog-Backend"
 FRONTEND_DIR="/root/Thermalog-frontend"
-COMPOSE_FILE="/root/docker-compose.yml"
 HEALTH_URL="https://localhost/api/health"
-LOG_FILE="/root/deployment.log"
+LOG_FILE="/root/thermalog-ops/logs/deployment/deployment.log"
+DEPLOY_HISTORY_FILE="/root/thermalog-ops/logs/deployment/deployment-history.json"
 SLACK_WEBHOOK_URL=""  # Optional: Add Slack webhook for notifications
+
+# State file configuration
+STATE_DIR="/root/thermalog-ops/deployment-state"
+MAX_RECOVERY_ATTEMPTS=3
+STATE_FILE_EXPIRY=3600  # 1 hour in seconds
 
 # Email notification settings (HTTPS API)
 EMAIL_ENABLED="true"  # Set to "true" to enable email notifications
@@ -32,6 +40,9 @@ EMAIL_METHOD="sendgrid"  # Options: sendgrid, emailjs, webhook
 # Email consolidation settings
 EMAIL_SUMMARY=""  # Accumulates messages for consolidated email
 EMAIL_FINAL_STATUS=""  # Tracks overall deployment status
+
+# Ensure state directory exists
+mkdir -p "$STATE_DIR" 2>/dev/null
 
 # Logging function
 log() {
@@ -51,7 +62,7 @@ send_email() {
     
     # Log the notification regardless of sending method
     local log_message="EMAIL NOTIFICATION: [$subject] $message (To: $EMAIL_TO, Priority: $priority)"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $log_message" >> /root/email-notifications.log
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $log_message" >> /root/thermalog-ops/logs/notifications/email-notifications.log
     
     # Send via HTTPS API if API key is configured
     if [ ! -z "$EMAIL_API_KEY" ]; then
@@ -66,11 +77,11 @@ send_email() {
                 send_email_webhook "$subject" "$message" "$priority"
                 ;;
             *)
-                echo "Unknown email method: $EMAIL_METHOD" >> /root/email-notifications.log
+                echo "Unknown email method: $EMAIL_METHOD" >> /root/thermalog-ops/logs/notifications/email-notifications.log
                 ;;
         esac
     else
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] EMAIL_API_KEY not set - email logged only" >> /root/email-notifications.log
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] EMAIL_API_KEY not set - email logged only" >> /root/thermalog-ops/logs/notifications/email-notifications.log
     fi
 }
 
@@ -151,8 +162,8 @@ EOF
         -d "$json_payload" \
         "https://api.sendgrid.com/v3/mail/send" \
         > /dev/null 2>&1 && \
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Email sent via SendGrid API" >> /root/email-notifications.log || \
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to send via SendGrid API" >> /root/email-notifications.log
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Email sent via SendGrid API" >> /root/thermalog-ops/logs/notifications/email-notifications.log || \
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to send via SendGrid API" >> /root/thermalog-ops/logs/notifications/email-notifications.log
 }
 
 # Generic webhook email function
@@ -182,8 +193,8 @@ EOF
             -d "$webhook_payload" \
             "$WEBHOOK_URL" \
             > /dev/null 2>&1 && \
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Email sent via webhook" >> /root/email-notifications.log || \
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to send via webhook" >> /root/email-notifications.log
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Email sent via webhook" >> /root/thermalog-ops/logs/notifications/email-notifications.log || \
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to send via webhook" >> /root/thermalog-ops/logs/notifications/email-notifications.log
     fi
 }
 
@@ -193,7 +204,7 @@ send_email_emailjs() {
     local message=$2
     local priority=$3
     
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] EmailJS integration not implemented yet" >> /root/email-notifications.log
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] EmailJS integration not implemented yet" >> /root/thermalog-ops/logs/notifications/email-notifications.log
 }
 
 # Send notification (optional)
@@ -294,33 +305,64 @@ cleanup_failed_deployment() {
     
     # Try to restore from backup if available
     if [ -f "$state_file" ] && grep -q "BACKUP_TAG:" "$state_file"; then
-        BACKUP_TAG=$(grep "BACKUP_TAG:" "$state_file" | cut -d: -f2)
+        BACKUP_TAG=$(grep "BACKUP_TAG:" "$state_file" | cut -d: -f2 | tail -1)
         if [ ! -z "$BACKUP_TAG" ]; then
             send_notification "🔄 Restoring from backup: $BACKUP_TAG" "info"
-            docker tag root-thermalog-$service:$BACKUP_TAG root-thermalog-$service:latest 2>/dev/null || true
+            docker tag thermalog-thermalog-$service:$BACKUP_TAG thermalog-thermalog-$service:latest 2>/dev/null || true
             docker compose up -d thermalog-$service > /dev/null 2>&1
+            
+            # Verify restoration
+            sleep 5
+            if docker ps | grep -q thermalog-$service; then
+                send_notification "✅ Service restored from backup" "success"
+            else
+                send_notification "⚠️ Service restoration may have failed" "warning"
+            fi
         fi
     fi
     
-    # Archive the state file for debugging
-    if [ -f "$state_file" ]; then
-        mv "$state_file" "/root/failed-deploy-$(date +%Y%m%d-%H%M%S).log"
-        send_notification "📋 Deployment state archived for debugging" "info"
-    fi
+    # Don't remove state file here - let check_interrupted_deployments handle it
+    # This prevents the infinite loop issue
 }
 
 # Check for interrupted deployments on startup
 check_interrupted_deployments() {
-    for state_file in /tmp/deploy-*-state; do
+    # Check both old /tmp location and new state directory
+    for state_file in /tmp/deploy-*-state "$STATE_DIR"/deploy-*-state; do
         if [ -f "$state_file" ]; then
+            # Check if state file is expired (older than STATE_FILE_EXPIRY seconds)
+            file_mod_time=$(stat -c %Y "$state_file" 2>/dev/null || echo "0")
+            current_time=$(date +%s)
+            if [ "$file_mod_time" != "0" ]; then
+                file_age=$((current_time - file_mod_time))
+            else
+                file_age=0
+            fi
+            if [ $file_age -gt $STATE_FILE_EXPIRY ]; then
+                send_notification "🗑️ Removing expired state file: $(basename $state_file)" "info"
+                mv "$state_file" "/root/thermalog-ops/logs/deployment/failures/expired-deploy-$(date +%Y%m%d-%H%M%S).log"
+                continue
+            fi
+            
             send_notification "🔍 Found interrupted deployment state file: $(basename $state_file)" "warning"
             
             # Extract service name
             service=$(basename "$state_file" | sed 's/deploy-\(.*\)-state/\1/')
             
+            # Check recovery attempts
+            recovery_attempts=$(grep -c "RECOVERY_ATTEMPT:" "$state_file" 2>/dev/null || echo 0)
+            if [ $recovery_attempts -ge $MAX_RECOVERY_ATTEMPTS ]; then
+                send_notification "❌ Max recovery attempts ($MAX_RECOVERY_ATTEMPTS) reached for $service - manual intervention required" "error"
+                mv "$state_file" "/root/thermalog-ops/logs/deployment/failures/max-recovery-reached-$(date +%Y%m%d-%H%M%S).log"
+                continue
+            fi
+            
+            # Record recovery attempt
+            echo "RECOVERY_ATTEMPT:$(date '+%Y-%m-%d %H:%M:%S')" >> "$state_file"
+            
             # Check if deployment completed
             if ! grep -q "DEPLOY_COMPLETED:" "$state_file"; then
-                send_notification "⚠️ Deployment of $service was interrupted - attempting recovery" "warning"
+                send_notification "⚠️ Deployment of $service was interrupted - attempting recovery (attempt $((recovery_attempts + 1))/$MAX_RECOVERY_ATTEMPTS)" "warning"
                 
                 # Get stored values
                 current_commit=$(grep "CURRENT_COMMIT:" "$state_file" 2>/dev/null | cut -d: -f2)
@@ -333,6 +375,7 @@ check_interrupted_deployments() {
                     service_dir="/root/Thermalog-frontend"
                 else
                     send_notification "❌ Unknown service in interrupted deployment: $service" "error"
+                    mv "$state_file" "/root/thermalog-ops/logs/deployment/failures/unknown-service-$(date +%Y%m%d-%H%M%S).log"
                     continue
                 fi
                 
@@ -340,9 +383,11 @@ check_interrupted_deployments() {
                 if [ ! -z "$current_commit" ] && [ ! -z "$service_dir" ]; then
                     cleanup_failed_deployment "$service" "$service_dir" "$current_commit" "$state_file"
                     send_notification "✅ Recovery attempt completed for $service" "info"
+                    # Remove state file after successful recovery
+                    rm -f "$state_file"
                 else
                     send_notification "❌ Insufficient data to recover $service deployment" "error"
-                    mv "$state_file" "/root/unrecoverable-deploy-$(date +%Y%m%d-%H%M%S).log"
+                    mv "$state_file" "/root/thermalog-ops/logs/deployment/failures/unrecoverable-deploy-$(date +%Y%m%d-%H%M%S).log"
                 fi
             else
                 # Deployment completed successfully, remove state file
@@ -374,12 +419,15 @@ check_health() {
     return 1
 }
 
-# Check for GitHub updates
+# Check for GitHub updates with improved detection
 check_github_updates() {
     local dir=$1
     local service=$2
     
     cd $dir
+    
+    # Store current state
+    LOCAL_BEFORE=$(git rev-parse HEAD)
     
     # Fetch latest from GitHub
     git fetch origin main --quiet
@@ -387,7 +435,22 @@ check_github_updates() {
     LOCAL=$(git rev-parse HEAD)
     REMOTE=$(git rev-parse origin/main)
     
-    if [ "$LOCAL" != "$REMOTE" ]; then
+    # Check deployment history to see if this commit was already deployed
+    if [ -f "$DEPLOY_HISTORY_FILE" ]; then
+        LAST_DEPLOYED=$(python3 -c "import sys, json; 
+            data = json.load(open('$DEPLOY_HISTORY_FILE', 'r')) if sys.version_info >= (3,0) else {}; 
+            deploys = data.get('$service', []); 
+            print(deploys[-1]['commit'] if deploys else '')" 2>/dev/null || echo "")
+        
+        # If remote commit was already deployed, skip unless forced
+        if [ "$REMOTE" = "$LAST_DEPLOYED" ] && [ "$FORCE_DEPLOY" != "true" ]; then
+            echo "false"
+            return 1
+        fi
+    fi
+    
+    # Check if local and remote differ OR if force deploy is set
+    if [ "$LOCAL" != "$REMOTE" ] || [ "$FORCE_DEPLOY" = "true" ]; then
         echo "true"
         return 0
     else
@@ -401,9 +464,10 @@ deploy_service() {
     local service=$1
     local dir=$2
     
-    # Create deployment state file
-    local DEPLOY_STATE_FILE="/tmp/deploy-$service-state"
+    # Create deployment state file in dedicated directory
+    local DEPLOY_STATE_FILE="$STATE_DIR/deploy-$service-state"
     echo "STARTED:$(date '+%Y-%m-%d %H:%M:%S')" > $DEPLOY_STATE_FILE
+    echo "PID:$$" >> $DEPLOY_STATE_FILE
     
     send_notification "🚀 Starting deployment of $service" "info"
     
@@ -415,7 +479,7 @@ deploy_service() {
     
     # Create backup tag
     BACKUP_TAG="auto-backup-$(date +%Y%m%d-%H%M%S)"
-    if docker tag root-thermalog-$service:latest root-thermalog-$service:$BACKUP_TAG 2>/dev/null; then
+    if docker tag thermalog-thermalog-$service:latest thermalog-thermalog-$service:$BACKUP_TAG 2>/dev/null; then
         echo "BACKUP_TAG:$BACKUP_TAG" >> $DEPLOY_STATE_FILE
         send_notification "📦 Created backup: $BACKUP_TAG" "info"
     else
@@ -471,12 +535,15 @@ deploy_service() {
             send_notification "✅ $service deployed successfully!" "success"
             send_notification "📝 Changes: $COMMIT_MESSAGE" "info"
             
+            # Record successful deployment
+            record_deployment "$service" "$LATEST_COMMIT" "success" "$COMMIT_MESSAGE"
+            
             # Mark deployment as fully completed
             echo "HEALTH_CHECK_PASSED:$(date '+%Y-%m-%d %H:%M:%S')" >> $DEPLOY_STATE_FILE
             echo "DEPLOYMENT_SUCCESS:$(date '+%Y-%m-%d %H:%M:%S')" >> $DEPLOY_STATE_FILE
             
             # Cleanup old backups (keep last 3)
-            docker images | grep "root-thermalog-$service.*auto-backup" | tail -n +4 | awk '{print $3}' | xargs -r docker rmi 2>/dev/null || true
+            docker images | grep "thermalog-thermalog-$service.*auto-backup" | tail -n +4 | awk '{print $3}' | xargs -r docker rmi 2>/dev/null || true
             
             # Remove state file on successful completion
             rm -f "$DEPLOY_STATE_FILE"
@@ -486,10 +553,13 @@ deploy_service() {
             send_notification "❌ Health check failed for $service - rolling back" "error"
             echo "HEALTH_CHECK_FAILED:$(date '+%Y-%m-%d %H:%M:%S')" >> $DEPLOY_STATE_FILE
             
+            # Record failed deployment
+            record_deployment "$service" "$LATEST_COMMIT" "failed" "Health check failed"
+            
             # Rollback
             docker compose stop thermalog-$service > /dev/null 2>&1
             if [ ! -z "$BACKUP_TAG" ]; then
-                docker tag root-thermalog-$service:$BACKUP_TAG root-thermalog-$service:latest
+                docker tag thermalog-thermalog-$service:$BACKUP_TAG thermalog-thermalog-$service:latest
             fi
             docker compose up -d thermalog-$service > /dev/null 2>&1
             
@@ -501,12 +571,12 @@ deploy_service() {
                 send_notification "✅ Rollback successful for $service" "success"
                 echo "ROLLBACK_SUCCESS:$(date '+%Y-%m-%d %H:%M:%S')" >> $DEPLOY_STATE_FILE
                 # Archive the failure state for analysis
-                mv "$DEPLOY_STATE_FILE" "/root/failed-deploy-$(date +%Y%m%d-%H%M%S).log"
+                mv "$DEPLOY_STATE_FILE" "/root/thermalog-ops/logs/deployment/failures/failed-deploy-$(date +%Y%m%d-%H%M%S).log"
             else
                 send_notification "🚨 CRITICAL: Rollback failed for $service" "error"
                 echo "ROLLBACK_FAILED:$(date '+%Y-%m-%d %H:%M:%S')" >> $DEPLOY_STATE_FILE
                 # Keep state file for manual intervention
-                mv "$DEPLOY_STATE_FILE" "/root/critical-deploy-failure-$(date +%Y%m%d-%H%M%S).log"
+                mv "$DEPLOY_STATE_FILE" "/root/thermalog-ops/logs/deployment/failures/critical-deploy-failure-$(date +%Y%m%d-%H%M%S).log"
             fi
             
             return 1
@@ -517,6 +587,10 @@ deploy_service() {
         if docker ps | grep -q thermalog-$service; then
             send_notification "✅ $service deployed successfully!" "success"
             send_notification "📝 Changes: $COMMIT_MESSAGE" "info"
+            
+            # Record successful deployment
+            record_deployment "$service" "$LATEST_COMMIT" "success" "$COMMIT_MESSAGE"
+            
             echo "DEPLOYMENT_SUCCESS:$(date '+%Y-%m-%d %H:%M:%S')" >> $DEPLOY_STATE_FILE
             # Remove state file on successful completion
             rm -f "$DEPLOY_STATE_FILE"
@@ -530,8 +604,53 @@ deploy_service() {
     fi
 }
 
+# Record deployment in history
+record_deployment() {
+    local service=$1
+    local commit=$2
+    local status=$3
+    local message=$4
+    
+    # Initialize history file if it doesn't exist
+    if [ ! -f "$DEPLOY_HISTORY_FILE" ]; then
+        echo '{}' > "$DEPLOY_HISTORY_FILE"
+    fi
+    
+    # Add deployment record
+    python3 -c "
+import json
+import datetime
+
+with open('$DEPLOY_HISTORY_FILE', 'r') as f:
+    data = json.load(f)
+
+if '$service' not in data:
+    data['$service'] = []
+
+data['$service'].append({
+    'timestamp': datetime.datetime.now().isoformat(),
+    'commit': '$commit',
+    'status': '$status',
+    'message': '$message'
+})
+
+# Keep only last 50 deployments per service
+data['$service'] = data['$service'][-50:]
+
+with open('$DEPLOY_HISTORY_FILE', 'w') as f:
+    json.dump(data, f, indent=2)
+" 2>/dev/null || echo "Failed to record deployment"
+}
+
 # Main execution
 main() {
+    # Check for force deploy flag
+    FORCE_DEPLOY="false"
+    if [ "$1" = "--force" ] || [ "$1" = "-f" ]; then
+        FORCE_DEPLOY="true"
+        echo -e "${YELLOW}Force deploy mode activated${NC}"
+    fi
+    
     echo -e "${CYAN}═══════════════════════════════════════════════════════${NC}"
     echo -e "${CYAN}     AUTOMATED DEPLOYMENT CHECK - $(date)${NC}"
     echo -e "${CYAN}═══════════════════════════════════════════════════════${NC}"
@@ -597,7 +716,7 @@ main() {
     if [ "$UPDATES_FOUND" = true ]; then
         echo ""
         echo -e "${YELLOW}Running Docker cleanup...${NC}"
-        /root/docker-cleanup.sh > /dev/null 2>&1
+        /root/thermalog-ops/scripts/maintenance/docker-cleanup.sh > /dev/null 2>&1
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}✓ Docker cleanup completed${NC}"
         fi
@@ -614,13 +733,19 @@ main() {
 # Create lock file to prevent multiple instances
 LOCKFILE="/tmp/auto-deploy.lock"
 
-if [ -e "${LOCKFILE}" ] && kill -0 $(cat "${LOCKFILE}") 2>/dev/null; then
-    echo "Deployment script is already running"
-    exit 1
+if [ -e "${LOCKFILE}" ]; then
+    LOCK_PID=$(cat "${LOCKFILE}" 2>/dev/null)
+    if [ ! -z "$LOCK_PID" ] && kill -0 $LOCK_PID 2>/dev/null; then
+        echo "Deployment script is already running (PID: $LOCK_PID)"
+        exit 1
+    else
+        echo "Removing stale lock file"
+        rm -f "${LOCKFILE}"
+    fi
 fi
 
 echo $$ > "${LOCKFILE}"
-trap "rm -f ${LOCKFILE}" EXIT
+trap "rm -f ${LOCKFILE}" EXIT INT TERM
 
-# Run main function
-main
+# Run main function with arguments
+main "$@"

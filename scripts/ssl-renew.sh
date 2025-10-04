@@ -1,5 +1,22 @@
 #!/bin/bash
 
+################################################################################
+# ⚠️  DEPRECATED - DO NOT USE IN PRODUCTION
+################################################################################
+# This script is DEPRECATED and kept only for historical reference.
+#
+# REASON: This script handles only SINGLE SSL certificates.
+# The production system now uses DUAL SSL certificates (ECDSA + RSA).
+#
+# USE INSTEAD: /root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh
+#
+# See documentation:
+# - /root/thermalog-infrastructure/docs/DUAL_SSL_CERTIFICATES.md
+# - /root/thermalog-infrastructure/MIGRATION_NOTES.md
+#
+# Last Updated: October 2025
+################################################################################
+
 # SSL Certificate Renewal Script for Thermalog
 # Handles Let's Encrypt certificate renewal with Docker integration
 

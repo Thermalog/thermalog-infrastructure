@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-LOG_FILE="/root/startup-thermalog.log"
+LOG_FILE="/root/thermalog-ops/logs/deployment/startup-thermalog.log"
 
 # Logging function
 log() {
@@ -39,26 +39,45 @@ done
 # 2. Wait a bit more for Docker daemon to be fully ready
 sleep 5
 
-# 3. Start Docker Compose stack
+# 3. Ensure Uptime Kuma database is in good state
+echo -e "${YELLOW}Checking Uptime Kuma database integrity...${NC}"
+DB_PATH="/var/lib/docker/volumes/thermalog_uptime-kuma-data/_data"
+if [ -f "$DB_PATH/kuma.db" ]; then
+    # Check if WAL file exists and has data
+    if [ -f "$DB_PATH/kuma.db-wal" ]; then
+        WAL_SIZE=$(stat -c%s "$DB_PATH/kuma.db-wal")
+        if [ "$WAL_SIZE" -gt 0 ]; then
+            echo "WAL file exists with size $WAL_SIZE bytes - forcing checkpoint"
+            # Force SQLite to checkpoint the WAL file
+            sqlite3 "$DB_PATH/kuma.db" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
+            echo -e "${GREEN}✓ Database checkpointed${NC}"
+        fi
+    fi
+    
+    echo -e "${GREEN}✓ Database prepared for startup${NC}"
+fi
+
+# 4. Start Docker Compose stack
 echo -e "${YELLOW}Starting Thermalog application stack...${NC}"
 cd /root
 
 # Check if containers are already running
-RUNNING_CONTAINERS=$(docker ps --format "{{.Names}}" | grep -E "(thermalog|nginx)" | wc -l)
+RUNNING_CONTAINERS=$(docker ps --format "{{.Names}}" | grep -E "(thermalog|nginx|uptime-kuma)" | wc -l)
 
-if [ "$RUNNING_CONTAINERS" -ge 3 ]; then
+if [ "$RUNNING_CONTAINERS" -ge 4 ]; then
     echo -e "${GREEN}✓ Application stack already running${NC}"
 else
     echo "Starting application stack..."
+    # Start containers (they will be recreated after reboot, which is expected)
     docker compose up -d
     
     # Wait for containers to start
     sleep 10
 fi
 
-# 4. Verify all containers are running
+# 5. Verify all containers are running
 echo -e "${YELLOW}Verifying container status...${NC}"
-EXPECTED_CONTAINERS=("thermalog-backend" "thermalog-frontend" "nginx")
+EXPECTED_CONTAINERS=("thermalog-backend" "thermalog-frontend" "nginx" "uptime-kuma")
 
 for container in "${EXPECTED_CONTAINERS[@]}"; do
     if docker ps | grep -q "$container"; then
@@ -69,11 +88,11 @@ for container in "${EXPECTED_CONTAINERS[@]}"; do
         
         # Try to start the specific container
         echo "Attempting to start $container..."
-        docker compose up -d "$container" || true
+        docker compose up -d --no-recreate "$container" || true
     fi
 done
 
-# 5. Wait for backend to be ready and verify health
+# 6. Wait for backend to be ready and verify health
 echo -e "${YELLOW}Verifying backend health...${NC}"
 for i in {1..30}; do
     HEALTH_STATUS=$(curl -s http://localhost:3001/api/health 2>/dev/null | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('status', 'unknown'))" 2>/dev/null || echo "error")
@@ -87,7 +106,7 @@ for i in {1..30}; do
     sleep 2
 done
 
-# 6. Verify cron service and jobs
+# 7. Verify cron service and jobs
 echo -e "${YELLOW}Verifying cron service...${NC}"
 if systemctl is-active --quiet cron; then
     echo -e "${GREEN}✓ Cron service is active${NC}"
@@ -103,7 +122,7 @@ else
     systemctl start cron || true
 fi
 
-# 7. Show final status
+# 8. Show final status
 echo ""
 echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}Final System Status:${NC}"
@@ -111,7 +130,7 @@ echo -e "${BLUE}═════════════════════�
 
 echo ""
 echo "Docker Containers:"
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(thermalog|nginx|NAMES)"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(thermalog|nginx|uptime-kuma|NAMES)"
 
 echo ""
 echo "System Services:"

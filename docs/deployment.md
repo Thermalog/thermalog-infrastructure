@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers deployment scenarios for the Thermalog application.
+This guide covers deployment scenarios for the Thermalog application with EMQX IoT Platform and dual SSL certificates.
 
 ## 🆕 New Server Deployment
 
@@ -9,23 +9,26 @@ This guide covers deployment scenarios for the Thermalog application.
 - Domain name configured (A record pointing to server IP)
 - Root access to the server
 - SSH access configured
+- Minimum 4GB RAM (8GB recommended for EMQX Platform)
 
 ### Automated Setup
 
 1. **Clone the infrastructure repository**:
    ```bash
-   git clone https://github.com/yourusername/thermalog-infrastructure.git
+   git clone https://github.com/Thermalog/thermalog-infrastructure.git
    cd thermalog-infrastructure
    ```
 
-2. **Run the setup script**:
+2. **Run the master deployment script** (auto-clones other repos):
    ```bash
-   sudo ./scripts/setup-server.sh
+   sudo ./deploy-everything.sh
    ```
 
-3. **Configure environment variables** when prompted:
-   - Edit `Thermalog-Backend/.env`
-   - Edit `Thermalog-frontend/.env`
+3. **Configure environment variables**:
+   - Backend: `/root/Thermalog-Backend/.env`
+   - Frontend: `/root/Thermalog-frontend/.env`
+   - Infrastructure: `/root/thermalog-infrastructure/.env`
+   - EMQX Platform: `/root/emqx-platform/.env`
 
 ### Manual Setup (Alternative)
 
@@ -34,8 +37,9 @@ If you prefer manual control:
 1. **Update system and install Docker**:
    ```bash
    sudo apt update && sudo apt upgrade -y
-   sudo curl -fsSL https://get.docker.com -o get-docker.sh
+   curl -fsSL https://get.docker.com -o get-docker.sh
    sudo sh get-docker.sh
+   sudo apt install docker-compose-plugin -y
    ```
 
 2. **Install Certbot**:
@@ -44,32 +48,45 @@ If you prefer manual control:
    sudo ln -s /snap/bin/certbot /usr/bin/certbot
    ```
 
-3. **Clone application repositories**:
+3. **Clone repositories** (use deploy-everything.sh or manual):
    ```bash
-   mkdir -p /root/thermalog-app && cd /root/thermalog-app
-   git clone https://github.com/yourusername/Thermalog-Backend.git
-   git clone https://github.com/yourusername/Thermalog-frontend.git
-   git clone https://github.com/yourusername/thermalog-infrastructure.git
+   cd /root
+   git clone https://github.com/Thermalog/Thermalog-Backend.git
+   git clone https://github.com/Thermalog/Thermalog-frontend.git
+   git clone https://github.com/Thermalog/thermalog-infrastructure.git
+   git clone https://github.com/Thermalog/thermalog-ops.git
+   git clone https://github.com/Thermalog/emqx-platform.git
    ```
 
 4. **Setup configuration**:
    ```bash
-   cp thermalog-infrastructure/docker/*.yml .
-   cp thermalog-infrastructure/configs/.env.*.template .
-   # Edit environment files with your configuration
+   # Configure environment files (use templates from configs/)
+   cp thermalog-infrastructure/configs/.env.backend.template Thermalog-Backend/.env
+   cp thermalog-infrastructure/configs/.env.frontend.template Thermalog-frontend/.env
+   # Edit .env files with your configuration
    ```
 
-5. **Start application**:
+5. **Setup dual SSL certificates**:
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+   docker stop nginx 2>/dev/null || true
+
+   # ECDSA certificate
+   certbot certonly --standalone -d dashboard.thermalog.com.au \
+     --key-type ecdsa --elliptic-curve secp384r1 \
+     --non-interactive --agree-tos --email admin@thermalog.com.au
+
+   # RSA certificate
+   certbot certonly --standalone -d dashboard.thermalog.com.au \
+     --cert-name dashboard.thermalog.com.au-rsa \
+     --key-type rsa --rsa-key-size 4096 \
+     --non-interactive --agree-tos --email admin@thermalog.com.au
    ```
 
-6. **Setup SSL**:
+6. **Start services**:
    ```bash
-   docker stop nginx
-   certbot certonly --standalone -d your-domain.com --non-interactive --agree-tos --email your-email@domain.com
-   ./thermalog-infrastructure/scripts/install-ssl-hooks.sh
-   docker start nginx
+   # Enable systemd services
+   systemctl enable thermalog.service thermalog-startup.service emqx-platform.service
+   systemctl start thermalog.service emqx-platform.service
    ```
 
 ## 🔄 Update Deployment

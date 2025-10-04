@@ -472,6 +472,129 @@ cp backup/nginx/default.conf nginx/
 docker exec nginx nginx -s reload
 ```
 
+## 🌐 EMQX Platform Issues
+
+### MQTT Broker Not Accessible
+
+**Symptoms**: Cannot connect to MQTT broker, devices failing to connect
+
+**Diagnosis**:
+```bash
+# Check EMQX container status
+docker ps | grep emqx
+
+# Check EMQX logs
+docker logs emqx --tail=100
+
+# Test MQTT connection
+mosquitto_pub -h localhost -p 1883 -t test -m "hello"
+
+# Check EMQX dashboard
+curl http://localhost:18083/api/v5/status
+```
+
+**Solutions**:
+1. **Restart EMQX Platform**:
+   ```bash
+   systemctl restart emqx-platform.service
+   ```
+
+2. **Check EMQX Configuration**:
+   ```bash
+   docker exec emqx emqx ctl status
+   docker exec emqx emqx ctl cluster status
+   ```
+
+### IoT PostgreSQL Connection Issues
+
+**Symptoms**: Device data not being stored, provisioning failures
+
+**Diagnosis**:
+```bash
+# Check PostgreSQL container
+docker ps | grep iot-postgres
+
+# Check PostgreSQL logs
+docker logs iot-postgres --tail=100
+
+# Test database connection
+docker exec iot-postgres psql -U iotadmin -d iot_platform -c "SELECT COUNT(*) FROM device_credentials;"
+```
+
+**Solutions**:
+1. **Restart IoT PostgreSQL**:
+   ```bash
+   cd /root/emqx-platform && docker-compose restart iot-postgres
+   ```
+
+2. **Check Database Connectivity from EMQX**:
+   ```bash
+   docker exec emqx ping iot-postgres
+   ```
+
+## 🔐 Dual SSL Certificate Issues
+
+### Wrong Certificate Being Served
+
+**Symptoms**: Browser shows RSA certificate when ECDSA expected (or vice versa)
+
+**Diagnosis**:
+```bash
+# Check which certificate is served
+openssl s_client -connect dashboard.thermalog.com.au:443 -servername dashboard.thermalog.com.au < /dev/null 2>/dev/null | openssl x509 -noout -text | grep "Public Key Algorithm"
+
+# Should show "id-ecPublicKey" for ECDSA or "rsaEncryption" for RSA
+
+# Verify both certificates exist
+ls -la /root/nginx/*.pem
+```
+
+**Solutions**:
+1. **Redeploy Both Certificates**:
+   ```bash
+   # Run dual SSL renewal script manually
+   /root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh
+   ```
+
+2. **Check Nginx Configuration**:
+   ```bash
+   docker exec nginx nginx -t
+   docker exec nginx cat /etc/nginx/conf.d/default.conf | grep ssl_certificate
+   ```
+
+### Certificate Renewal Fails for One Type
+
+**Symptoms**: ECDSA renews but RSA fails (or vice versa)
+
+**Diagnosis**:
+```bash
+# Check both certificate expiry
+certbot certificates
+
+# Check renewal logs
+tail -f /root/thermalog-ops/logs/maintenance/ssl-renewal.log
+```
+
+**Solutions**:
+1. **Renew Failed Certificate Manually**:
+   ```bash
+   # For ECDSA
+   certbot renew --force-renewal --cert-name dashboard.thermalog.com.au
+
+   # For RSA
+   certbot renew --force-renewal --cert-name dashboard.thermalog.com.au-rsa
+   ```
+
+2. **Regenerate Missing Certificate**:
+   ```bash
+   # Stop nginx
+   docker stop nginx
+
+   # Regenerate certificate (see docs/ssl-setup.md)
+   # Then restart
+   docker start nginx
+   ```
+
 ## 📞 Getting Help
 
 ### Log Collection

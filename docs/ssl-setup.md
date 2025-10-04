@@ -1,10 +1,14 @@
-# SSL Certificate Setup and Management
+# Dual SSL Certificate Setup and Management
 
-This guide covers SSL certificate setup, management, and troubleshooting for the Thermalog application.
+This guide covers dual SSL certificate (ECDSA + RSA) setup, management, and troubleshooting for the Thermalog application.
 
 ## 🔒 Overview
 
-The Thermalog infrastructure uses Let's Encrypt SSL certificates with automatic renewal and Docker integration.
+The Thermalog infrastructure uses **dual Let's Encrypt SSL certificates** with automatic renewal and Docker integration:
+- **ECDSA P-384** - Modern, efficient cryptography for current browsers
+- **RSA 4096-bit** - Legacy compatibility for older browsers and systems
+
+This dual-certificate approach ensures maximum compatibility while providing optimal security and performance.
 
 ## 🚀 Initial SSL Setup
 
@@ -22,21 +26,45 @@ The `setup-server.sh` script handles SSL automatically:
    docker stop nginx
    ```
 
-2. **Generate SSL certificate**:
+2. **Generate ECDSA SSL certificate**:
    ```bash
    certbot certonly --standalone \
      -d dashboard.thermalog.com.au \
+     --key-type ecdsa \
+     --elliptic-curve secp384r1 \
      --non-interactive \
      --agree-tos \
      --email admin@thermalog.com.au
    ```
 
-3. **Install renewal hooks**:
+3. **Generate RSA SSL certificate** (for legacy compatibility):
    ```bash
-   ./scripts/install-ssl-hooks.sh
+   certbot certonly --standalone \
+     -d dashboard.thermalog.com.au \
+     --cert-name dashboard.thermalog.com.au-rsa \
+     --key-type rsa \
+     --rsa-key-size 4096 \
+     --non-interactive \
+     --agree-tos \
+     --email admin@thermalog.com.au
    ```
 
-4. **Start nginx with SSL**:
+4. **Deploy dual certificates to nginx**:
+   ```bash
+   # Copy ECDSA certificates
+   cp /etc/letsencrypt/live/dashboard.thermalog.com.au/fullchain.pem /root/nginx/fullchain-ecdsa.pem
+   cp /etc/letsencrypt/live/dashboard.thermalog.com.au/privkey.pem /root/nginx/privkey-ecdsa.pem
+
+   # Copy RSA certificates
+   cp /etc/letsencrypt/live/dashboard.thermalog.com.au-rsa/fullchain.pem /root/nginx/fullchain-rsa.pem
+   cp /etc/letsencrypt/live/dashboard.thermalog.com.au-rsa/privkey.pem /root/nginx/privkey-rsa.pem
+
+   # Set permissions
+   chmod 644 /root/nginx/fullchain-*.pem
+   chmod 600 /root/nginx/privkey-*.pem
+   ```
+
+5. **Start nginx with dual SSL**:
    ```bash
    docker start nginx
    ```
@@ -45,87 +73,106 @@ The `setup-server.sh` script handles SSL automatically:
 
 ### How It Works
 
-The automatic renewal system uses three hooks:
+The automatic renewal system uses a **cron-based approach** with the dual SSL renewal script:
 
-1. **Pre-hook** (`scripts/ssl-hooks/pre/stop-nginx.sh`):
-   - Stops nginx container before renewal
-   - Frees port 80 for Let's Encrypt validation
+**Script**: `/root/thermalog-ops/scripts/maintenance/ssl-renew-dual.sh`
 
-2. **Post-hook** (`scripts/ssl-hooks/post/start-nginx.sh`):
-   - Starts nginx container after renewal
-   - Restores service availability
-
-3. **Deploy-hook** (`scripts/ssl-hooks/deploy/docker-nginx.sh`):
-   - Copies new certificates to nginx container
-   - Reloads nginx configuration
-   - Logs deployment status
+**Renewal Process**:
+1. Checks expiry for BOTH certificates (ECDSA + RSA)
+2. Stops nginx container (frees port 80)
+3. Renews ECDSA certificate if <30 days remaining
+4. Renews RSA certificate if <30 days remaining
+5. Copies both certificates to nginx directory
+6. Restarts nginx container
+7. Verifies HTTPS connectivity
+8. Logs results to `/root/thermalog-ops/logs/maintenance/ssl-renewal.log`
 
 ### Renewal Schedule
 
-- **Timer**: Runs twice daily (systemd timer)
-- **Trigger**: 30 days before expiration
-- **Method**: Let's Encrypt ACME standalone
-- **Downtime**: ~30 seconds during renewal
+- **Method**: Cron job (simple and reliable)
+- **Frequency**: Twice daily at 3:15 AM and 3:15 PM UTC
+- **Trigger**: Only renews when <30 days remaining
+- **Certificates**: Both ECDSA and RSA renewed together
+- **Downtime**: ~30-60 seconds during renewal
+- **Log**: `/root/thermalog-ops/logs/maintenance/ssl-renewal.log`
 
 ### Verification
 
 ```bash
-# Check renewal timer status
-systemctl list-timers | grep certbot
+# Check cron job is configured
+crontab -l | grep ssl-renew-dual
 
-# Test renewal process
+# Test dual renewal process
 certbot renew --dry-run
 
-# Check deployment logs
-cat /var/log/cert-deploy.log
+# Check renewal logs
+tail -f /root/thermalog-ops/logs/maintenance/ssl-renewal.log
+
+# Verify both certificates exist
+ls -la /root/nginx/*.pem
 ```
 
-## 📁 Certificate Files
+## 📁 Dual Certificate Files
 
 ### Location Structure
 ```
 /etc/letsencrypt/
-├── live/dashboard.thermalog.com.au/
+├── live/dashboard.thermalog.com.au/           # ECDSA certificate
 │   ├── fullchain.pem    -> ../../archive/.../fullchain1.pem
 │   ├── privkey.pem      -> ../../archive/.../privkey1.pem
 │   ├── cert.pem         -> ../../archive/.../cert1.pem
 │   └── chain.pem        -> ../../archive/.../chain1.pem
-├── archive/dashboard.thermalog.com.au/
-│   ├── fullchain1.pem   # Certificate + intermediate chain
-│   ├── privkey1.pem     # Private key
-│   ├── cert1.pem        # Certificate only
-│   └── chain1.pem       # Intermediate chain
-└── renewal/dashboard.thermalog.com.au.conf
+├── live/dashboard.thermalog.com.au-rsa/       # RSA certificate
+│   ├── fullchain.pem    -> ../../archive/.../fullchain1.pem
+│   ├── privkey.pem      -> ../../archive/.../privkey1.pem
+│   ├── cert.pem         -> ../../archive/.../cert1.pem
+│   └── chain.pem        -> ../../archive/.../chain1.pem
+├── archive/dashboard.thermalog.com.au/        # ECDSA archive
+│   └── [ECDSA certificate files]
+├── archive/dashboard.thermalog.com.au-rsa/    # RSA archive
+│   └── [RSA certificate files]
+├── renewal/dashboard.thermalog.com.au.conf    # ECDSA renewal config
+└── renewal/dashboard.thermalog.com.au-rsa.conf # RSA renewal config
 ```
 
-### Docker Integration
+### Nginx Certificate Directory
 
-Certificates are copied to the nginx container:
+Dual certificates deployed to nginx:
 ```bash
-# In container paths:
-/etc/ssl/certs/fullchain.pem   # Full certificate chain
-/etc/ssl/certs/privkey.pem     # Private key
+/root/nginx/                                    # Actual: /root/Config/nginx/ (via symlink)
+├── fullchain-ecdsa.pem    # ECDSA certificate chain
+├── privkey-ecdsa.pem      # ECDSA private key (600 permissions)
+├── fullchain-rsa.pem      # RSA certificate chain
+└── privkey-rsa.pem        # RSA private key (600 permissions)
 ```
 
 ## 🔧 Configuration Files
 
-### Nginx SSL Configuration
+### Nginx Dual SSL Configuration
 
-Located in `nginx/default.conf`:
+Located in `/root/Config/nginx/default.conf`:
 
 ```nginx
 server {
     listen 443 ssl;
     server_name dashboard.thermalog.com.au;
 
-    # SSL Certificate files
-    ssl_certificate /etc/ssl/certs/fullchain.pem;
-    ssl_certificate_key /etc/ssl/certs/privkey.pem;
+    # Dual SSL Certificate files (ECDSA + RSA)
+    # ECDSA certificate (preferred by modern clients)
+    ssl_certificate /etc/ssl/certs/fullchain-ecdsa.pem;
+    ssl_certificate_key /etc/ssl/certs/privkey-ecdsa.pem;
+
+    # RSA certificate (fallback for legacy clients)
+    ssl_certificate /etc/ssl/certs/fullchain-rsa.pem;
+    ssl_certificate_key /etc/ssl/certs/privkey-rsa.pem;
 
     # SSL Settings
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers 'TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:ECDHE-RSA-AES128-GCM-SHA256';
+    ssl_ciphers 'TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256';
     ssl_prefer_server_ciphers off;
+
+    # Nginx automatically selects the best certificate for each client
+    # Modern browsers get ECDSA, older systems get RSA
 
     # Your application configuration...
 }

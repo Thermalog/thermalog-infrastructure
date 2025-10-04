@@ -6,11 +6,11 @@
 set -e
 
 # Source the existing email function
-source /root/auto-deploy.sh
+source /root/thermalog-ops/scripts/deployment/auto-deploy.sh
 
 # Configuration
-KUMA_DB="/var/lib/docker/volumes/root_uptime-kuma-data/_data/kuma.db"
-ALERT_LOG="/root/uptime-alerts.log"
+KUMA_DB="/var/lib/docker/volumes/thermalog_uptime-kuma-data/_data/kuma.db"
+ALERT_LOG="/root/thermalog-ops/logs/monitoring/uptime-alerts.log"
 STATE_FILE="/tmp/uptime-kuma-state"
 COOLDOWN_FILE="/tmp/monitor-cooldown.state"
 HEALTH_CHECK_RETRIES=3
@@ -77,44 +77,12 @@ check_service_health() {
 
 # Get detailed system status
 get_system_status() {
-    # Use -k flag to ignore SSL certificate warnings for localhost
-    local backend_health=$(curl -s -o /dev/null -w "%{http_code}" -k https://localhost/api/health 2>/dev/null | grep -q "200" && echo "✅ Online" || echo "❌ Offline")
-    local frontend_health=$(check_service_health "Frontend" "http://localhost:80")
-    local dashboard_health=$(check_service_health "Dashboard" "https://dashboard.thermalog.com.au")
-    local mqtt_health=$(nc -zv localhost 1883 2>/dev/null && echo "✅ Online" || echo "❌ Offline")
-    local mqtt_tls_health=$(nc -zv localhost 8883 2>/dev/null && echo "✅ Online" || echo "❌ Offline")
-    local mqtt_ws_health=$(nc -zv localhost 9001 2>/dev/null && echo "✅ Online" || echo "❌ Offline")
-    local provisioning_health=$(check_service_health "Provisioning" "http://localhost:3003/health")
-    local tasmota_health=$(check_service_health "Tasmota API" "http://localhost:3003/api/provisioning/tasmota/discover.json")
-    local nginx_health=$(curl -s -o /dev/null -w "%{http_code}" -k https://localhost 2>/dev/null | grep -q "200" && echo "✅ Online" || echo "❌ Offline")
-    local uptime_health=$(check_service_health "Uptime Kuma" "http://localhost:3002")
-    
-    # Get container info - include ALL containers
-    local container_status=$(docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'thermalog|nginx|mqtt|provisioning|uptime' || echo "No containers found")
-    
-    # Check database connection - simplified approach
-    local db_status="❌ Disconnected"
-    if docker exec thermalog-backend sh -c "echo 'SELECT 1;' | npx prisma db execute --stdin --schema=/app/prisma/schema/schema.prisma 2>&1" | grep -q "Script executed successfully"; then
-        db_status="✅ Connected"
-    fi
+    # Get container info for main services only
+    local container_status=$(docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'thermalog-frontend|thermalog-backend|nginx' || echo "No containers found")
     
     echo "
-🏥 SYSTEM HEALTH REPORT:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 Service Status:
-• Backend API: $backend_health
-• Frontend: $frontend_health
-• Dashboard: $dashboard_health
-• Database: $db_status
-• HTTPS/Nginx: $nginx_health
-• MQTT Broker (1883): $mqtt_health
-• MQTT TLS (8883): $mqtt_tls_health
-• MQTT WebSocket (9001): $mqtt_ws_health
-• Provisioning Service: $provisioning_health
-• Tasmota API: $tasmota_health
-• Uptime Kuma: $uptime_health
-
 🐳 Container Status:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 $container_status
 
 💾 System Resources:
@@ -290,7 +258,6 @@ $(get_system_status)
         # Add footer
         ALERT_MESSAGE+="
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 Uptime Kuma Dashboard: http://$(curl -s ipinfo.io/ip 2>/dev/null):3002
 🌐 Production Site: https://dashboard.thermalog.com.au
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

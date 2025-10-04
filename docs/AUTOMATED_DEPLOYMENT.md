@@ -77,10 +77,13 @@ This will:
 ### Cron Schedule
 ```bash
 # Check for deployments every 5 minutes
-*/5 * * * * /root/auto-deploy.sh >> /root/deployment-cron.log 2>&1
+*/5 * * * * /root/thermalog-ops/scripts/deployment/auto-deploy.sh >> /root/thermalog-ops/logs/deployment/auto-deploy-cron.log 2>&1
 
-# Daily Docker cleanup at 2 AM
-0 2 * * * /root/docker-cleanup.sh >> /root/docker-cleanup-cron.log 2>&1
+# Daily Docker cleanup at 2 AM UTC
+0 2 * * * /root/thermalog-ops/scripts/maintenance/docker-cleanup.sh >> /root/thermalog-ops/logs/maintenance/docker-cleanup-cron.log 2>&1
+
+# Process cleanup every 12 hours
+0 */12 * * * /root/thermalog-ops/scripts/deployment/cleanup_processes.sh >> /root/thermalog-ops/logs/maintenance/process-cleanup-cron.log 2>&1
 ```
 
 ### Health Check Endpoints
@@ -122,21 +125,25 @@ GET /api/health/ready
 ## Monitoring
 
 ### Log Files
-- `/root/deployment.log` - Main deployment activity
-- `/root/deployment-cron.log` - Cron execution logs
-- `/root/docker-cleanup.log` - Docker cleanup activity
-- `/root/docker-cleanup-cron.log` - Daily cleanup logs
+- `/root/thermalog-ops/logs/deployment/deployment.log` - Main deployment activity
+- `/root/thermalog-ops/logs/deployment/auto-deploy-cron.log` - Cron execution logs
+- `/root/thermalog-ops/logs/maintenance/docker-cleanup.log` - Docker cleanup activity
+- `/root/thermalog-ops/logs/maintenance/docker-cleanup-cron.log` - Daily cleanup logs
+- `/root/thermalog-ops/logs/maintenance/process-cleanup-cron.log` - Process cleanup logs
 
 ### Real-time Monitoring
 ```bash
 # Watch deployment activity
-tail -f /root/deployment.log
+tail -f /root/thermalog-ops/logs/deployment/deployment.log
 
 # Watch cron execution
-tail -f /root/deployment-cron.log
+tail -f /root/thermalog-ops/logs/deployment/auto-deploy-cron.log
 
 # Check Docker cleanup
-tail -f /root/docker-cleanup.log
+tail -f /root/thermalog-ops/logs/maintenance/docker-cleanup.log
+
+# Monitor all logs
+tail -f /root/thermalog-ops/logs/**/*.log
 ```
 
 ## Manual Operations
@@ -144,25 +151,42 @@ tail -f /root/docker-cleanup.log
 ### Manual Deployment
 ```bash
 # Run deployment check manually
-/root/auto-deploy.sh
+/root/thermalog-ops/scripts/deployment/auto-deploy.sh
 ```
 
 ### Manual Cleanup
 ```bash
 # Run Docker cleanup manually
-/root/docker-cleanup.sh
+/root/thermalog-ops/scripts/maintenance/docker-cleanup.sh
+
+# Run process cleanup manually
+/root/thermalog-ops/scripts/deployment/cleanup_processes.sh
 ```
 
 ### Disable Auto-deployment
 ```bash
 # Edit crontab to remove auto-deploy line
 crontab -e
+# Comment out the auto-deploy.sh line
 ```
 
 ### Re-enable Auto-deployment
 ```bash
 # Run setup script again
-/root/setup-auto-deploy.sh
+/root/thermalog-ops/scripts/deployment/setup-auto-deploy.sh
+```
+
+### EMQX Platform Deployment
+The system also monitors and deploys the EMQX IoT Platform:
+```bash
+# Check EMQX platform status
+systemctl status emqx-platform.service
+
+# View EMQX platform containers
+docker ps | grep -E "emqx|iot-postgres"
+
+# EMQX health check
+curl http://localhost:18083/api/v5/status
 ```
 
 ## Safety Features

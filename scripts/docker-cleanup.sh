@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-LOG_FILE="/root/docker-cleanup.log"
+LOG_FILE="/root/thermalog-ops/logs/maintenance/docker-cleanup.log"
 
 # Logging function
 log() {
@@ -86,11 +86,11 @@ ALL_IMAGES=$(docker images -q | sort -u)
 KEEP_IMAGES=""
 for SERVICE in backend frontend; do
     # Current image
-    KEEP_IMAGES="$KEEP_IMAGES $(docker images --format "{{.ID}}" root-thermalog-$SERVICE:latest 2>/dev/null || true)"
+    KEEP_IMAGES="$KEEP_IMAGES $(docker images --format "{{.ID}}" thermalog-thermalog-$SERVICE:latest 2>/dev/null || true)"
     
     # Last 3 backups
     KEEP_IMAGES="$KEEP_IMAGES $(docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}" | \
-                                 grep "root-thermalog-$SERVICE" | \
+                                 grep "thermalog-thermalog-$SERVICE" | \
                                  grep -E "(backup-|auto-backup-|last-stable)" | \
                                  head -n 3 | \
                                  awk '{print $3}')"
