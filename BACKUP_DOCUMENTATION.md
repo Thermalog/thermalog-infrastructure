@@ -62,7 +62,7 @@ The Thermalog server backup system provides comprehensive backup and recovery ca
 
 **Automated Schedule:** Daily at 3:00 AM via cron
 **Log File:** `/root/thermalog-ops/logs/maintenance/backup.log`
-**Retention:** Last 10 backups kept automatically
+**Retention:** Last 5 backups kept automatically
 
 **What it backs up:**
 - PostgreSQL database (pg_dump + gzip)
@@ -326,7 +326,7 @@ docker logs thermalog-frontend
 ### Current Automated Schedule (Production)
 - ✅ **Daily Backup**: 3:00 AM Sydney time - Comprehensive backup of all components
 - ✅ **Weekly Verification**: 4:00 AM Sunday Sydney time - Integrity check of latest backup
-- ✅ **Automatic Retention**: Last 10 backups kept (older backups auto-deleted)
+- ✅ **Automatic Retention**: Last 5 backups kept (older backups auto-deleted)
 - 📋 **Manual Backup**: Run anytime before major changes
 
 ### Active Cron Jobs

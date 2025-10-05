@@ -279,8 +279,8 @@ create_archive() {
 
     ARCHIVE_SIZE=$(du -h "${DATE}.tar.gz" | cut -f1)
 
-    # Keep only last 10 backups
-    ls -t *.tar.gz 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null || true
+    # Keep only last 5 backups
+    ls -t *.tar.gz 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
 
     print_success "Backup archive created: ${DATE}.tar.gz (${ARCHIVE_SIZE})"
 }

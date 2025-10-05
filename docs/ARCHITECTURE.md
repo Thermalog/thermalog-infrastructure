@@ -426,7 +426,7 @@ sudo systemctl disable thermalog.service
 | **Every 5 minutes** | Auto-deployment | `auto-deploy.sh` | `/root/thermalog-ops/logs/deployment/` | Deploy GitHub changes automatically with rollback |
 | **Every 12 hours** | Process cleanup | `cleanup_processes.sh` | `/root/thermalog-ops/logs/maintenance/` | Remove stale processes and zombie containers |
 | **Daily @ 2:00 AM** | Docker cleanup | `docker-cleanup.sh` | `/root/thermalog-ops/logs/maintenance/` | Prune images, volumes, keep current + 3 backups |
-| **Daily @ 3 AM Sydney** | Complete system backup | `backup.sh` | `/var/backups/thermalog/` | PostgreSQL, volumes, SSL, configs (keeps last 10) |
+| **Daily @ 3 AM Sydney** | Complete system backup | `backup.sh` | `/var/backups/thermalog/` | PostgreSQL, volumes, SSL, configs (keeps last 5) |
 | **3:15 AM & PM** | SSL certificate renewal | `ssl-renew-dual.sh` | `/root/thermalog-ops/logs/maintenance/` | Renew Let's Encrypt certs, reload nginx |
 
 ### View Cron Jobs
@@ -1015,7 +1015,7 @@ df -h
 
 | What | When | Location | Retention | Method |
 |------|------|----------|-----------|--------|
-| Complete System Backup | Daily @ 3 AM Sydney | `/var/backups/thermalog/` | Last 10 backups | `backup.sh` |
+| Complete System Backup | Daily @ 3 AM Sydney | `/var/backups/thermalog/` | Last 5 backups | `backup.sh` |
 | Includes: PostgreSQL, Docker volumes, SSL certs, configs | (comprehensive) | (same) | (auto-cleanup) | tar + pg_dump |
 | Backup Verification | Weekly Sunday @ 4 AM Sydney | (same) | N/A | `verify-latest-backup.sh` |
 

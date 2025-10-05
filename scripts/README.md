@@ -203,7 +203,7 @@ crontab -l
 - System information
 
 **Location**: `/var/backups/thermalog/`
-**Retention**: Last 10 backups
+**Retention**: Last 5 backups
 **Schedule**: Daily at 3 AM Sydney (17:00 UTC)
 
 **Manual execution**:
